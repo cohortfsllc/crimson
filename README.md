@@ -29,6 +29,15 @@ For our first, basic prototype, we shall:
   configure these to have specific time costs to simulate them, and
   help us figure out where best and how to insert them.)
 
+Building
+--------
+
+Call make with the path to the Seastar package-config file, like so:
+
+make SEASTAR_PC="$HOME/seastar/build/release/seastar.pc"
+
+(Substitute 'debug' for release if you wish.)
+
 Future
 ------
 
