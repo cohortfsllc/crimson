@@ -12,3 +12,10 @@ add_subdirectory(proto)
 
 # crimson source
 add_subdirectory(src)
+
+# tests
+option(WITH_TESTS "Create a 'check' target to build and run tests" ON)
+if(WITH_TESTS)
+	include_directories(src)
+	add_subdirectory(test)
+endif(WITH_TESTS)
