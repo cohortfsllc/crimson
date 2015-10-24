@@ -8,3 +8,7 @@ find_package(Seastar REQUIRED)
 
 # crimson source
 add_subdirectory(src)
+
+# tests
+include_directories(src)
+add_subdirectory(test)
