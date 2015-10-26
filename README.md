@@ -32,11 +32,23 @@ For our first, basic prototype, we shall:
 Building
 --------
 
-Call make with the path to the Seastar package-config file, like so:
+You will need
 
-make SEASTAR_PC="$HOME/seastar/build/release/seastar.pc"
+- cmake
+- Seasatar
+  seastare may be acquired with
+  `git clone git://github.com/scylladb/seastar.git`
+  and built with
+  `./configure.py; ninja-build`
 
-(Substitute 'debug' for release if you wish.)
+  For more info read Seastar's install instructions
+
+Call CMake and build make. If you have seastar installed in a
+nonstandard location, use a line like
+
+`PKG_CONFIG_PATH=/path/to/seastar/build/release cmake /path/to/crimson`
+
+(Substitute `debug` for release if you wish.)
 
 Future
 ------
