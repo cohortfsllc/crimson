@@ -1,3 +1,6 @@
 [submodule "src/xxHash"]
 	path = src/xxHash
 	url = git://github.com/Cyan4973/xxHash.git
+[submodule "src/cxx_function"]
+	path = src/cxx_function
+	url = git://github.com/potswa/cxx_function.git
