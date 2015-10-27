@@ -35,16 +35,22 @@ Building
 You will need
 
 - cmake
-- Seasatar  
+- Seastar  
   it may be fetched with
 
         git clone git://github.com/scylladb/seastar.git
 
   and built with
 
-        ./configure.py; ninja-build
+        ./configure.py
+        ninja-build
 
   For more info read Seastar's install instructions.
+
+This project uses git submodules. Before building, make sure to
+execute
+
+    git submodule update --init --recursive
 
 Call CMake and build make. If you have seastar installed in a
 nonstandard location, use a line like
