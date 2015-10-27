@@ -35,18 +35,21 @@ Building
 You will need
 
 - cmake
-- Seasatar
-  seastare may be acquired with
-  `git clone git://github.com/scylladb/seastar.git`
-  and built with
-  `./configure.py; ninja-build`
+- Seasatar  
+  it may be fetched with
 
-  For more info read Seastar's install instructions
+        git clone git://github.com/scylladb/seastar.git
+
+  and built with
+
+        ./configure.py; ninja-build
+
+  For more info read Seastar's install instructions.
 
 Call CMake and build make. If you have seastar installed in a
 nonstandard location, use a line like
 
-`PKG_CONFIG_PATH=/path/to/seastar/build/release cmake /path/to/crimson`
+    PKG_CONFIG_PATH=/path/to/seastar/build/release cmake /path/to/crimson
 
 (Substitute `debug` for release if you wish.)
 
