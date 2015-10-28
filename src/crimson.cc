@@ -20,6 +20,11 @@
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 // 02110-1301 USA
 
+/// \file crimson.cc
+/// \brief Main driver for Project Crimson server executable
+///
+/// \author Adam C. Emerson <aemerson@redhat.com>
+
 #include <iostream>
 
 #include <core/app-template.hh>
