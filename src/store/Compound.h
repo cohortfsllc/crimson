@@ -256,7 +256,7 @@ class Compound {
     bool is_read_only() const {
       return read_only_opcode(op);
     }
-    union u {
+    union {
       /// noop. 'nuf said
       struct {} nop;
       /// Ensure the existance of an object in a collection
@@ -604,6 +604,89 @@ class Compound {
     return std::all_of(ops.cbegin(), ops.cend(),
 		       std::mem_fn(&Op::is_read_only));
   }
+};
+
+/// Response for executing a Compound operation
+class CompoundRes {
+  /// A single operation
+  struct Op {
+    /// The opcode
+    Compound::Op::code op;
+    bool failed;
+    union {
+      struct {} nop;
+      struct {} touch;
+      struct {
+	temporary_buffer<buf> data; ///< Read data
+      } read;
+      struct {} write;
+      struct {} zero;
+      struct {} hole_punch;
+      struct {} truncate;
+      struct {} remove;
+      struct {
+	tmporary_buffer<char> val; ///< Retrieved value
+      } getattr;
+      struct {
+	std::vector<boost::optional<
+	  temporary_buffer<char>>> ///< Retrieved values
+      } getattrs;
+      struct {} setattr;
+      struct {} setattrs;
+      struct {} rmattr;
+      struct {} rmattrs;
+      struct {} rmattr_range;
+      struct {
+	std::vector<sstring> keys; ///< Found keys
+	boost::optional<AttCursorRef> tbc; ///< Use this cursor to continue.
+					   ///< None if we've hit the end
+      } enumerate_attr_keys;
+      /// Enumerate attributes (the names and values)
+      struct {
+	std::vector<std::pair<sstring,
+			      temporary_buffer<char>>> kvs; ///< Found pairs
+	boost::optional<AttCursorRef> tbc; ///< Use this cursor to continue.
+					   ///< None if we've hit the end
+      } enumerate_attr_keyvals;
+      struct {
+	AttCursorRef tbc; ///< The cursor corresponding to a lower
+			  ///< bound of the traversal
+      } attr_cursor;
+      struct {} clone;
+      struct {} clone_range;
+      struct {} set_alloc_hint;
+      struct {
+	temporary_buffer<char> header; ///< Got header
+      } get_header;
+      struct {} set_header;
+      struct {
+	/// Allocated extents within the range
+	///
+	/// Each element represents a single extent, giving its offset
+	/// and length. Areas not specified are holes. May not be
+	/// sorted. But two extents *must not* overlap.
+	std::vector<std::pair<uint64_t, uint64_t>> extents;
+      } get_extents;
+      struct {} make_collection;
+      struct {} remove_collection;
+      struct {} split_collection;
+      struct {} move_coll_rename;
+      struct {
+	std::vector<sstring> keys; ///< Found keys
+	boost::optional<ObjCursorRef> tbc; ///< Use this cursor to continue.
+					   ///< None if we've hit the end
+      } enumerate_objects;
+      struct {
+	boost::optional<ObjCursorRef> cursor; ///< Lower bound cursor
+      } obj_cursor;
+      struct {
+	std::vector<sstring> colls; ///< Collection names
+      } enumerate_collections;
+      struct {} sync;
+      std::exception *failure;
+    };
+  };
+  std::vector<Op> ops;
 };
 
 } // namespace store
