@@ -1,5 +1,6 @@
 set(osd_srcs
 	capn_connection.cc
+	osd.cc
 	)
 add_library(osd ${osd_srcs})
 target_include_directories(osd PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
