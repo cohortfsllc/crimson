@@ -14,5 +14,4 @@ add_subdirectory(proto)
 add_subdirectory(src)
 
 # tests
-include_directories(src)
 add_subdirectory(test)
