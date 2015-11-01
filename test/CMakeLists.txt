@@ -9,3 +9,7 @@ set_target_properties(GTest::GTest PROPERTIES
 	INTERFACE_LINK_LIBRARIES "${GTEST_LIBRARIES};${GTEST_MAIN_LIBRARIES}")
 
 # unit tests
+add_executable(test_connection EXCLUDE_FROM_ALL test_connection.cc)
+target_link_libraries(test_connection osd GTest::GTest)
+add_test(Connection test_connection)
+add_dependencies(check test_connection)
