@@ -9,3 +9,7 @@ target_link_libraries(osd Seastar::Seastar proto)
 add_executable(crimson crimson.cc)
 target_link_libraries(crimson osd)
 install(TARGETS crimson DESTINATION bin)
+
+add_executable(crimson-put crimson_put.cc)
+target_link_libraries(crimson-put osd)
+install(TARGETS crimson-put DESTINATION bin)
