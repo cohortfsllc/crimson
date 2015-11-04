@@ -5,6 +5,7 @@ add_custom_target(check COMMAND ${CMAKE_CTEST_COMMAND})
 option(WITH_FIO "Build fio engines" OFF)
 if(WITH_FIO)
 	find_package(Fio REQUIRED)
+	add_subdirectory(fio)
 endif(WITH_FIO)
 
 # unit tests
