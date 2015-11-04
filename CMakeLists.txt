@@ -7,6 +7,10 @@ set(CMAKE_CXX_STANDARD 14) # though Seastar adds -std=gnu++1y
 find_package(Seastar REQUIRED)
 find_package(CapnProto REQUIRED)
 
+# disabled by default because it requires a special branch of seastar,
+# see src/fio/README.md
+option(WITH_FIO "Build a library for fio integration" OFF)
+
 # protocol definitions
 add_subdirectory(proto)
 
