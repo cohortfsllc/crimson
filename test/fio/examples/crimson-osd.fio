@@ -1,0 +1,11 @@
+[global]
+ioengine=libfio_crimson_osd.so
+invalidate=0
+gtod_reduce=1 # disable latency statistics that call gettimeofday a lot
+rw=write
+bs=1
+size=512m
+
+[crimson]
+iodepth=16
+iodepth_batch_complete=16 # let getevents() spin with less interruptions
