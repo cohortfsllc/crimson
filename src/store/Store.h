@@ -84,19 +84,23 @@ namespace crimson {
       const Store& operator=(const Store& o) = delete;
 
       // mgmt
-      virtual size_t get_max_object_name_length() = 0;
-      virtual size_t get_max_attr_name_length() = 0;
+      virtual size_t get_max_object_name_length() const noexcept = 0;
+      virtual size_t get_max_attr_name_length() const noexcept = 0;
       virtual future<> mkfs() = 0;  // wipe
 
       /// Get the CPU to look up a collection
-      virtual unsigned get_cpu(const sstring& cid) const = 0;
+      ///
+      /// Collections exist on multiple CPUs, but one CPU has the tree
+      /// where the collection name can be looked up and which drives
+      /// initialization.
+      virtual unsigned get_cpu(const sstring& cid) const noexcept = 0;
 
       /**
        * Set and get internal fsid for this instance. No external data
        * is modified
        */
       virtual future<> set_fsid(boost::uuids::uuid u) = 0;
-      virtual future<boost::uuids::uuid> get_fsid() = 0;
+      virtual future<boost::uuids::uuid> get_fsid() const = 0;
     };
   } // namespace store
 } // namespace crimson

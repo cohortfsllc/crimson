@@ -80,8 +80,10 @@ namespace crimson {
 
     public:
 
-      explicit Collection(Store& _store, sstring _cid)
-	: store(_store),  cid(std::move(_cid)) {}
+      explicit Collection(uint32_t _slab_page_index, Store& _store,
+			  sstring _cid)
+	: slab_page_index(_slab_page_index), store(_store),
+	  cid(std::move(_cid)) {}
 
       virtual ~Collection() = default;
 

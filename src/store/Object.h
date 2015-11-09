@@ -78,38 +78,6 @@ namespace crimson {
 	}
       }
       ///@}
-    private:
-      /// \name cache
-      ///
-      /// Members related to cache lookup and storage
-      ///@{
-      // For debugging
-      using cache_link_mode = boost::intrusive::link_mode<
-	boost::intrusive::safe_link>;
-    public:
-      boost::intrusive::set_member_hook<cache_link_mode> cache_hook;
-    private:
-      using cache_option =
-	boost::intrusive::member_hook<Object, decltype(cache_hook),
-				      &Object::cache_hook>;
-      struct Compare {
-	bool operator()(const Object& l, const Object& r) const {
-	  return std::less<sstring>()(l.oid, r.oid);
-	}
-	bool operator()(const Object& l, const sstring& r) const {
-	  return std::less<sstring>()(l.oid, r);
-	}
-	bool operator()(const sstring& l, const Object& r) const {
-	  return std::less<sstring>()(l, r.oid);
-	}
-      };
-      friend Compare;
-    public:
-      using cache = boost::intrusive::set<
-	Object, cache_option,
-	boost::intrusive::constant_time_size<false>,
-	boost::intrusive::compare<Compare>>;
-      ///@}
 
     protected:
       CollectionRef coll;

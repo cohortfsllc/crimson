@@ -34,6 +34,9 @@
 #include <utility>
 
 #include <boost/uuid/uuid.hpp>
+#include <boost/uuid/random_generator.hpp>
+
+#include "common/xxHash.h"
 
 #include "Store.h"
 
@@ -41,12 +44,15 @@ namespace crimson {
 
   /// Storage interface
   namespace store {
+
+
     class Nihil : public Store {
       boost::uuids::uuid id;
     public:
       std::pair<future<CompoundRes> future<>> exec_compound(
 	Sequencer& osr, Compound& t) override;
 
+      Nihil() noexcept : id(boost::uuids::random_generator()()) {}
       virtual ~Nihil() = default;
       Nihil(const Store& o) = delete;
       const Nihil& operator=(const Nihil& o) = delete;
@@ -54,19 +60,32 @@ namespace crimson {
       const Nihil& operator=(Nihil&& o) = delete;
 
       // mgmt
-      size_t get_max_object_name_length() override;
-      size_t get_max_attr_name_length() override;
-      future<> mkfs() override; // wipe
+      size_t get_max_object_name_length() const noexcept override {
+	return 1<<10;
+      }
+      size_t get_max_attr_name_length() const noexcept override {
+	return 1<<10;
+      }
+      future<> mkfs() override {
+	return make_ready_future<>();
+      }
 
       /// Get the CPU to look up a collection
-      unsigned get_cpu(const sstring& cid) const override;
+      unsigned get_cpu(const sstring& cid) const noexcept override {
+	xxHash(cid) % smp::count;
+      }
 
       /**
        * Set and get internal fsid for this instance. No external data
        * is modified
        */
-      future<> set_fsid(boost::uuids::uuid u) override;
-      future<boost::uuids::uuid> get_fsid() override;
+      future<> set_fsid(boost::uuids::uuid u) override {
+	id = u;
+	return make_ready_future<>();
+      }
+      future<boost::uuids::uuid> get_fsid() override {
+	return make_ready_future<boost::uuids::uuid>(id);
+      }
     };
   } // namespace store
 } // namespace crimson
