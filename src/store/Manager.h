@@ -43,11 +43,6 @@ namespace crimson {
     /// stores and which stores are available.
     class Manager {
       seastar::sharded<Manager>& peers;
-      /// slab allocator for Objects
-      slab_allocator<Object>* object_slab;
-
-      /// slab allocator for Collections
-      slab_allocator<Collection>* collection_slab;
     };
   } // namespace store
 } // namespace crimson

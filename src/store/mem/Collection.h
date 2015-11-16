@@ -5,7 +5,8 @@
 
 // Copyright (C) 2015 Adam C. Emerson <aemerson@redhat.com
 //
-// Based on the Ceph object store which is Copyright (C) 2004-2006
+// Based on MemStore work by Casey Bodley <cbodley@redhat.com>
+// and the Ceph object store which is Copyright (C) 2004-2006
 // Sage Weil <sage@newdream.net>
 //
 // This library is free software; you can redistribute it and/or
@@ -23,15 +24,24 @@
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 // 02110-1301 USA
 
-/// \file Nihil.cc
-/// \brief Object store that stores nothing. Implementation.
+/// \file mem/Collection.h
+/// \brief Fast, in-memory object collections
 ///
 /// \author Adam C. Emerson <aemerson@redhat.com>
 
-#include <boost/iterator/counting_iterator.hpp>
-#include <core/slab.hh>
+#ifndef CRIMSON_STORE_MEM_COLLECTION_H
+#define CRIMSON_STORE_MEM_COLLECTION_H
+
+#include <utility>
 
 namespace crimson {
+  /// Storage interface
   namespace store {
+    namspace _mem {
+      class Collection : public crimson::store::Collection {
+      }
+    } // namespace _mem
   } // namespace store
 } // namespace crimson
+
+#endif // CRIMSON_STORE_MEM_COLLECTION_H

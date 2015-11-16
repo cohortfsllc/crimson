@@ -5,7 +5,8 @@
 
 // Copyright (C) 2015 Adam C. Emerson <aemerson@redhat.com
 //
-// Based on the Ceph object store which is Copyright (C) 2004-2006
+// Based on MemStore work by Casey Bodley <cbodley@redhat.com>
+// and the Ceph object store which is Copyright (C) 2004-2006
 // Sage Weil <sage@newdream.net>
 //
 // This library is free software; you can redistribute it and/or
@@ -23,15 +24,34 @@
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 // 02110-1301 USA
 
-/// \file Nihil.cc
-/// \brief Object store that stores nothing. Implementation.
+/// \file mem/Object.h
+/// \brief Fast, in-memory objects
 ///
 /// \author Adam C. Emerson <aemerson@redhat.com>
 
-#include <boost/iterator/counting_iterator.hpp>
-#include <core/slab.hh>
+#ifndef CRIMSON_STORE_MEM_OBJECT_H
+#define CRIMSON_STORE_MEM_OBJECT_H
+
+#include <array>
+#include <utility>
+
+#include "PageSet.h"
+#include "../Compound.h"
 
 namespace crimson {
+  /// Storage interface
   namespace store {
-  } // namespace store
+    namspace _mem {
+      static constexpr size_t page_size = 64 << 10;
+      using page_set = PartitionedPageSet<PageSize>;
+
+      class Object : crimson::store::Object {
+	page_set data;
+	size_t data_len;
+	std::array<std::map<sstring,sstring>, attr_ns::omap + 1> attrs;
+	sstring omap_header;
+      };
+    } // namespace _mem
 } // namespace crimson
+
+#endif // CRIMSON_STORE_MEM_OBJECT_H

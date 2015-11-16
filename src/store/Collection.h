@@ -42,43 +42,20 @@ namespace crimson {
     /// Collections have names and can be enumerated in order.  Like an
     /// individual object, a collection also has a set of xattrs.
 
-    class Collection : public slab_item_base {
-      /// \name lifecycle
-      ///
-      /// Members related to lifecycle and interaction with the slab allocator.
-      ///@{
-    private:
-      uint32_t slab_page_index;
-      uint32_t ref_count;
-    public:
-      uint32_t get_slab_page_index() const {
-	return slab_page_index;
-      }
-      bool is_unlocked() const {
-	return ref_count == 1;
-      }
-      friend inline void intrusive_ptr_add_ref(Collection* c) {
-	++c->ref_count;
-	if (c->ref_count == 2) {
-	  collection_slab->lock_item(c);
-	}
-	assert(c->ref_count > 0);
-      }
-      friend inline void intrusive_ptr_release(Collection* c) {
-	assert(c->ref_count > 0);
-	--c->ref_count;
-	if (c->ref_count == 1) {
-	  collection_slab->unlock_item(c);
-	} else if (c->ref_count == 0) {
-	  collection_slab->free(c);
-	}
-      }
-      ///@}
+    class Collection {
     private:
       Store& store;
       const sstring cid;
 
     public:
+      virtual void ref()  = 0;
+      virtual void unref()  = 0;
+      friend inline void intrusive_ptr_add_ref(Collection* c) {
+	c->ref();
+      }
+      friend inline void intrusive_ptr_release(Collection* c) {
+	c->unref();
+      }
 
       explicit Collection(uint32_t _slab_page_index, Store& _store,
 			  sstring _cid)

@@ -46,36 +46,15 @@ namespace crimson {
     /// A handle for object storage operations
     ///
     /// Used to represent existing objects in the Store.
-    class Object : public slab_item_base {
-      /// \name lifecycle
-      ///
-      /// Members related to lifecycle and interaction with the slab allocator.
-      ///@{
+    class Object {
     private:
-      uint32_t slab_page_index;
-      uint32_t ref_count;
-    public:
-      uint32_t get_slab_page_index() const {
-	return slab_page_index;
-      }
-      bool is_unlocked() const {
-	return ref_count == 1;
-      }
+      virtual void ref() = 0;
+      virtual void unref() = 0;
       friend inline void intrusive_ptr_add_ref(Object* o) {
-	++o->ref_count;
-	if (o->ref_count == 2) {
-	  coll->get_store().manager.object_slab->lock_item(o);
-	}
-	assert(o->ref_count > 0);
+	o->ref();
       }
       friend inline void intrusive_ptr_release(Object* o) {
-	assert(o->ref_count > 0);
-	--o->ref_count;
-	if (o->ref_count == 1) {
-	  coll->store.manager.object_slab->unlock_item(o);
-	} else if (o->ref_count == 0) {
-	  coll->get_store().manager.object_slab->free(o);
-	}
+	o->unref();
       }
       ///@}
 
