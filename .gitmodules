@@ -4,3 +4,6 @@
 [submodule "src/cxx_function"]
 	path = src/cxx_function
 	url = git://github.com/potswa/cxx_function.git
+[submodule "src/GSL"]
+	path = src/GSL
+	url = git://github.com/Microsoft/GSL.git
