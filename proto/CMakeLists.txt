@@ -1,7 +1,9 @@
 # compile .capnp files into a library
 set(proto_files
 	crimson.capnp
+	net.capnp
 	osd_read.capnp
+	osd_map.capnp
 	osd_write.capnp
 	)
 
