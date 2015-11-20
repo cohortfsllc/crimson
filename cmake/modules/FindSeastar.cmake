@@ -39,6 +39,12 @@ find_package_handle_standard_args(Seastar DEFAULT_MSG
 mark_as_advanced(SEASTAR_COMPILE_OPTIONS SEASTAR_INCLUDE_DIRS SEASTAR_LIBRARIES)
 
 if(SEASTAR_FOUND AND NOT TARGET Seastar::Seastar)
+	# filter out some cflags
+	list(FIND SEASTAR_COMPILE_OPTIONS "-fvisibility=hidden" hidden_index)
+	if(NOT hidden_index EQUAL -1)
+		list(REMOVE_AT SEASTAR_COMPILE_OPTIONS ${hidden_index})
+	endif()
+
 	add_library(Seastar::Seastar INTERFACE IMPORTED)
 	set_target_properties(Seastar::Seastar PROPERTIES
 		INTERFACE_COMPILE_OPTIONS "${SEASTAR_COMPILE_OPTIONS}"
