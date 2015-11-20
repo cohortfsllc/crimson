@@ -20,8 +20,8 @@
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 // 02110-1301 USA
 
-#include "msg/direct_messenger.h"
-#include "msg/socket_messenger.h"
+#include "direct_messenger.h"
+#include "socket_messenger.h"
 #include "crimson.capnp.h"
 #include <capnp/message.h>
 #include <kj/debug.h>
