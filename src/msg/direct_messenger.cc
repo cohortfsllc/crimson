@@ -81,7 +81,7 @@ future<> DirectConnection::close()
   if (!p)
     return now();
 
-  auto e = std::runtime_error{"connection closed"};
+  auto e = std::system_error{ECONNRESET, std::system_category()};
   reads_waiting_for_message.for_each([&e] (auto& p) { p.set_exception(e); });
   auto release_read = std::move(reads_waiting_for_message);
 
@@ -90,34 +90,29 @@ future<> DirectConnection::close()
 }
 
 
-DirectListener::DirectListener()
-  : accepting(false)
-{}
-
 future<shared_ptr<Connection>> DirectListener::accept()
 {
   if (accepting)
     return make_exception_future<shared_ptr<Connection>>(
-        std::runtime_error("address in use"));
+        std::system_error{EADDRINUSE, std::system_category()});
   accepting = true;
   return accept_promise.get_future();
 }
 
-/// Fail the accept_promise and reset to initial state.
 future<> DirectListener::close()
 {
-  accept_promise.set_exception(std::runtime_error("listener closed"));
+  accept_promise.set_exception(std::system_error{ECONNRESET,
+                                                 std::system_category()});
   auto destroy_previous = std::move(accept_promise);
   accepting = false;
   return now();
 }
 
-/// Create a DirectConnection pair and share it with accept().
 future<shared_ptr<Connection>> DirectListener::connect()
 {
   if (!accepting)
     return make_exception_future<shared_ptr<Connection>>(
-        std::runtime_error("connection refused"));
+        std::system_error{ECONNREFUSED, std::system_category()});
   accepting = false;
   auto c = DirectConnection::make_pair();
   accept_promise.set_value(c.second);

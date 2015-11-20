@@ -69,10 +69,8 @@ class DirectConnection : public Connection {
 /// DirectConnection.
 class DirectListener : public Listener {
   promise<shared_ptr<Connection>> accept_promise;
-  bool accepting;
+  bool accepting{false};
  public:
-  DirectListener();
-
   /// Return a future that resolves on the next call to connect().
   future<shared_ptr<Connection>> accept() override;
 
