@@ -21,75 +21,18 @@
 // 02110-1301 USA
 
 #include "socket_messenger.h"
-#include <capnp/message.h>
-#include <kj/debug.h>
+#include "common/segment_message_reader.h"
 #include <algorithm>
-#include <vector>
 
 using namespace crimson;
 using namespace crimson::net;
 
 namespace {
 
-/// Buffer segments are represented by seastar's temporary_buffer, which
-/// provides ownership semantics that we use to control the buffer lifecycle
-using segment_t = temporary_buffer<char>;
-using segment_array_t = std::vector<segment_t>;
-
-/// 64-bit words are the unit of capnp buffer segments
-using capnp::word;
-/// capnp::MessageReader/Builder deal with buffer segments as kj::ArrayPtrs,
-/// which have no ownership semantics
-using kj_segment_t = kj::ArrayPtr<const word>;
-using kj_segment_array_t = kj::ArrayPtr<const kj_segment_t>;
-
-/// Construct a kj_segment_t that points to the buffer owned by a segment_t
-inline kj_segment_t kj_segment_cast(segment_t& s) {
-  KJ_REQUIRE(s.size() % sizeof(word) == 0, "kj_segment_cast would truncate");
-  return {reinterpret_cast<const word*>(s.begin()), s.size() / sizeof(word)};
-}
-
-/// Write a hex dump of a segment_t
-inline std::ostream& operator<<(std::ostream& out, segment_t& rhs) {
-  out << std::hex;
-  auto fill = out.fill('0');
-  for (auto c : rhs) out << static_cast<uint32_t>(c);
-  out.fill(fill);
-  return out << std::dec;
-}
-
-/// Write a hex dump of a kj_segment_t
-inline std::ostream& operator<<(std::ostream& out, kj_segment_t& rhs) {
-  out << std::hex;
-  auto fill = out.fill('0');
-  for (auto c : rhs.asBytes()) out << static_cast<uint32_t>(c);
-  out.fill(fill);
-  return out << std::dec;
-}
-
-/// A MessageReader similar to capnp::SegmentArrayMessageReader, except that it
-/// takes ownership of the given segments. That means it must not be destructed
-/// while there are outstanding references to its segments.
-class SegmentMessageReader final : public capnp::MessageReader {
-  segment_array_t segments; //< buffers from the input stream
- public:
-  SegmentMessageReader(segment_array_t&& segments,
-                       capnp::ReaderOptions options = capnp::ReaderOptions())
-    : MessageReader(options), segments(std::move(segments)) {}
-
-  /// Returns an ArrayPtr to the given buffer segment
-  kj::ArrayPtr<const capnp::word> getSegment(uint id) override {
-    if (id >= segments.size())
-      return nullptr;
-    return kj_segment_cast(segments[id]);
-  }
-};
-
 class ProtocolError : public std::runtime_error {
  public:
   ProtocolError(const std::string& msg) : std::runtime_error(msg) {}
 };
-
 
 // The following functions implement the segment framing procol recommended
 // here: https://capnproto.org/encoding.html#serialization-over-a-stream
