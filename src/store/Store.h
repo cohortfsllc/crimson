@@ -53,6 +53,18 @@ namespace crimson {
 
   /// Storage interface
   namespace store {
+    /// Data being written in to the Store
+    ///
+    /// Represent a set of buffers and the offset to which they should
+    /// be written. The Store will never modify a value of this type.
+    struct invec {
+      uint64_t offset;
+      std::vector<temporary_buffer<char>> data;
+    };
+
+    /// Data being read from the store
+    using outvec = std::vector<temporary_buffer<char>> data;
+
     /**
      * a sequencer orders transactions
      *

@@ -33,13 +33,14 @@
 #define CRIMSON_STORE_MEM_PAGESET_H
 
 #include <limits>
+#include <map>
 #include <utility>
 
-#include <boost/intrusive/avl_set.hpp>
 #include <boost/range.hpp>
 
+#include "../Store.h"
+
 namespace crimson {
-  /// Storage interface
   namespace store {
     namspace _mem {
       constexpr bool is_power_of_2(const uintmax_t n) {
@@ -54,38 +55,16 @@ namespace crimson {
 
       /// A single page
       ///
-      /// \note I made the page-size a compile-time constant, at least
-      /// for now, so we have the option of moving some of our methods
-      /// out of the header file, since we look to be using the same
-      /// values throughout.
-      class Page {
-	static_assert(is_power_of_2(page_size),
-		      "page_size must be a power of 2.");
-	std::aligned_storage_t<page_size> p;
-	boost::intrusive::avl_set_member_hook<> hook;
-	const uint64_t offset;
+      /// Support copy-on-write by being non-intrusive. We can use the
+      /// use-count to decide whether we need to copy the page or
+      /// whether we can just modify it.
+      using Page = std::array<page_size, char>;
 
-	// key-value comparison functor
-	struct Less {
-	  bool operator()(uint64_t offset, const Page& page) const noexcept {
-	    return offset < page.offset;
-	  }
-	  bool operator()(const Page& page, uint64_t offset) const noexcept {
-	    return page.offset < offset;
-	  }
-	  bool operator()(const Page& lhs, const Page& rhs) const noexcept {
-	    return lhs.offset < rhs.offset;
-	  }
-	};
-      public:
-	Page(uint64_t offset = 0) : offset(offset) {}
-
-	Page(const Page&) = delete;
-	Page& operator=(const Page&) = delete;
-
-	Page(Page&&) = delete;
-	Page& operator=(Page&&) = delete;
-      };
+     /// A reference to a page
+      ///
+      /// At least, hwo we store them in trees and otherwise hang on
+      /// to them when not operating on them immediately.
+      using PageRef = lw_shared_ptr<Page>;
 
       /// A set of pages that knows it's part of a whole
       ///
@@ -93,51 +72,55 @@ namespace crimson {
       /// cores, this class knows about striping and iterates over
       /// pages sparsely.
       class PageSetSlice {
+	static_assert(is_power_of_2(page_size));
+	static_assert(is_power_of_2(page_slice_len));
       private:
 	/// Slice ID to determine which pages we store
 	const uint32_t slice;
 	/// Total number of slices in the page set
 	const uint32_t total_slices;
-	// store pages in a boost intrusive avl_set
-	// Does intrusive make sense in this context?
-	using page_cmp = typename page_type::Less;
-	using member_option = boost::intrusive::member_hook<
-	  page_type, boost::intrusive::avl_set_member_hook<>,
-	  &page_type::hook>;
-	page_set = boost::intrusive::avl_set<
-	  page_type, boost::intrusive::compare<page_cmp>, member_option>;
 
-	using iterator = typename page_set::iterator;
-	using const_iterator = typename page_set::const_iterator;
-      public:
-	using range = typename boost::iterator_range<iterator>;
-	using const_range = typename boost::iterator_range<const_iterator>;
+	using PageSet = std::map<uint64_t, PageRef>;
+	using iterator = typename PageSet::iterator;
+	using const_iterator = typename PageSet::const_iterator;
+	using range = typename boost::sub_range<PageSet>;
 
-	/// The actual AVL set of pages
-	page_set pages;
+	/// Our container for holding pages
+	///
+	/// Use a std::map since we need to traverse ranges.
+	PageSet pages;
 
-	/// Free pages (as a range)
-	void free_pages(range r) noexcept {
-	  free_pages(std::begin(r), std::end(r));
+	/// If a given offset even belongs to us
+	bool in_this_slice(uint64_t offset) const noexcept {
+	  return (offset / (page_size * page_slice_len) % total_slices)
+	    == slice;
 	}
 
-	/// Free pages (iterators)
-	void free_pages(iterator cur, iterator end) noexcept {
-	  while (cur != end) {
-	    page_type *page = &*cur;
-	    cur = pages.erase(cur);
-	    // Better deletion
-	    delete page;
+	/// Offset of page containing denomianted byte
+	static uint64_t page_offset(uint64_t offset) const noexcept {
+	  return offset & ~(page_size - 1);
+	}
+
+	/// Copy a page, if in use
+	///
+	/// This function /must/ be called before mutating any
+	/// page. It takes the iterator rather than the reference so
+	/// we can update the map.
+	void copy_on_write(iterator i) {
+	  if (i->second.use_count > 1) {
+	    auto p = make_lw_shared<Page>();
+	    boost::copy(*(i->second), p->begin());
+	    i->second = std::move(p);
 	  }
-	  return make_ready_future<>();
 	}
-
       public:
+	/// Tell us who we are
+	///
+	/// @param[in] _slice        Which slice (within the PageSet) we are.
+	/// @param[in] _total_slices How many there are
 	PageSetSlice(uint32_t _slice, const uint32_t _total_slices) noexcept
 	  : slice(_slice), total_slices(_total_slices) {}
-	~PageSetSlice() {
-	  free_pages(pages);
-	}
+	~PageSetSlice() = default;
 
 	PageSetSlice(const PageSet&) = delete;
 	PageSetSlice(PageSet&&) = delete;
@@ -145,15 +128,25 @@ namespace crimson {
 	PageSetSlice& PageSet(const PageSet&) = delete;
 	PageSetSlice& PageSet(PageSet&&) = delete;
 
-	bool empty() const { return pages.empty(); }
-
-	bool in_this_slice(uint64_t offset) const noexcept {
-	  return (offset / (page_size * page_slice_len) % total_slices)
-	    == slice;
+	/// Trucate a pageset
+	///
+	/// Delete all pages after a given offset
+	void truncate(uint64_t offset) noexcept {
+	  auto cur = pages.lower_bound(page_offset(offset));
+	  if (cur == pages.end())
+	    return;
+	  if (cur->offset < offset) {
+	    // We could, potentially, zero-fill the point after offset
+	    // on a page, but that would invoke COW to now
+	    // avail. Since the length of our object is known we
+	    // shouldn't read beyond the end.
+	    ++cur;
+	  }
+	  erase(cur, pages.end);
 	}
 
-	// allocate all pages that intersect the range [offset,length)
-	make_ready_future<> alloc_range(uint64_t offset, size_t length) {
+	//
+	void alloc_range(uint64_t offset, size_t length) {
 	  // loop in reverse so we can provide hints to
 	  //	avl_set::insert_check() and get O(1) insertions after
 	  //	the first
@@ -191,16 +184,6 @@ namespace crimson {
 	    position -= c;
 	    length -= c;
 	  }
-	}
-
-	future<> free_pages_after(uint64_t offset) {
-	  auto cur = pages.lower_bound(offset & ~(PageSize-1), page_cmp());
-	  if (cur == pages.end())
-	    return;
-	  if (cur->offset < offset)
-	    cur++;
-	  free_pages(cur, pages.end());
-	return make_ready_future<>();
 	}
 
 	range page_range(uint64_t offset, uint64_t length) {
@@ -300,35 +283,7 @@ namespace crimson {
 	  Ensures(p == range.end());
 	}
 
-	// Operates on pages of a given range
-	template<typename Fun>
-	future<> operate_range(uint64_t offset, size_t length,
-			       Fun function) {
-	  const size_t stripe_unit = PageSize * pages_per_stripe;
-	  auto part = partitions.begin() + (offset / stripe_unit)
-	    % partitions.size();
 
-	  while (length) {
-	    // number of pages left in this stripe
-	    size_t count = pages_per_stripe - (offset / PageSize)
-	      % pages_per_stripe;
-	    // ending offset of this stripe
-	    uint64_t stripe_end = (offset & ~(PageSize-1)) + PageSize * count;
-	    // bytes remaining in this stripe
-	    uint64_t stripe_len = stripe_end - offset;
-
-	    if (stripe_len > length)
-	      stripe_len = length;
-
-	    part->get_range(offset, stripe_len, range);
-
-	    offset += stripe_len;
-	    length -= stripe_len;
-
-	    if (++part == partitions.end()) // next partition
-	      part = partitions.begin();
-	  }
-	}
 
 	void free_pages_after(uint64_t offset) {
 	  for (auto &part : partitions)
