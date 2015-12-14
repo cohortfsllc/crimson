@@ -51,8 +51,9 @@ namespace crimson {
       using allocator_type = Allocator;
       using reference = member_type&;
       using const_reference = const member_type&;
-      using pointer = std::allocator_traits<Allocator>::pointer;
-      using const_pointer = std::allocator_traits<Allocator>::const_pointer;
+      using pointer = typename std::allocator_traits<Allocator>::pointer;
+      using const_pointer = typename std::allocator_traits<Allocator>
+	::const_pointer;
 
       /// Character-by-character iterator
       ///
@@ -65,10 +66,10 @@ namespace crimson {
       public:
 	iterator() noexcept
 	  : v(nullptr), bi(nullptr) { };
-	iterator(buffvec* _v, buffvec::iterator _vi, pointer _bi,
-		 size_type _o) noexcept
+	iterator(buffvec* _v, typename buffvec::iterator _vi,
+		 pointer _bi, size_type _o) noexcept
 	  : v(_v), vi(_vi), bi(_bi), o(_o) {
-	  Requres(vi != vector->end() || bi == nullptr);
+	  Requres(vi != v->end() || bi == nullptr);
 	};
 	iterator operator++() noexcept {
 	  iterator i = *this;
@@ -78,7 +79,7 @@ namespace crimson {
 	    ++vi;
 	    bi = (vi != v.end()) ? bi == vi->begin() : nullptr;
 	  }
-	  Ensures(vi != vector->end() || bi == nullptr);
+	  Ensures(vi != v->end() || bi == nullptr);
 	  return i;
 	}
 	iterator operator++(int) noexcept {
@@ -88,7 +89,7 @@ namespace crimson {
 	    ++vi;
 	    bi = (vi != v.end()) ? bi == vi->begin() : nullptr;
 	  }
-	  Ensures(vi != vector->end() || bi == nullptr);
+	  Ensures(vi != v->end() || bi == nullptr);
 	  return *this;
 	}
 
@@ -106,7 +107,7 @@ namespace crimson {
 	      bi = (vi == v.end() ? nullptr : vi->begin());
 	    }
 	  }
-	  Ensures(vi != vector->end() || bi == nullptr);
+	  Ensures(vi != v->end() || bi == nullptr);
 	  return *this;
 	}
 
@@ -120,7 +121,7 @@ namespace crimson {
 	    --bi;
 	  }
 	  --o;
-	  Ensures(vi != vector->end() || bi == nullptr);
+	  Ensures(vi != v->end() || bi == nullptr);
 	  return i;
 	}
 	iterator operator +(difference_type n) const noexcept {
@@ -137,7 +138,7 @@ namespace crimson {
 	    --bi;
 	  }
 	  --o;
-	  Ensures(vi != vector->end() || bi == nullptr);
+	  Ensures(vi != v->end() || bi == nullptr);
 	  return *this;
 	}
 	iterator operator -=(difference_type n) noexcept {
@@ -158,7 +159,7 @@ namespace crimson {
 	      bi = vi->end();
 	    }
 	  }
-	  Ensures(vi != vector->end() || bi == nullptr);
+	  Ensures(vi != v->end() || bi == nullptr);
 	  return *this;
 	}
 
@@ -172,10 +173,10 @@ namespace crimson {
 	  return i->o - o;
 	}
 
-	reference operator *() const noexcept {
+	pointer operator ->() const noexcept {
 	  return *bi;
 	}
-	pointer operator ->() const noxcept {
+	reference operator *() const noexcept {
 	  return *bi;
 	}
 	reference operator [](difference_type n) noexcept {
@@ -185,8 +186,8 @@ namespace crimson {
 	}
 
 	bool operator ==(const iterator& rhs) const noexcept {
-	  Requres((vi != vector->end() || bi == nullptr) &&
-		  (rhs.vi != vector->end() || rhs.bi == nullptr) &&
+	  Requres((vi != v->end() || bi == nullptr) &&
+		  (rhs.vi != v->end() || rhs.bi == nullptr) &&
 		  v == rhs->v);
 
 	  return (vi == rhs.vi && bi == rhs.vi);
@@ -195,33 +196,33 @@ namespace crimson {
 	  return !(*this == rhs);
 	}
 	bool operator <(const iterator& rhs) const noexcept {
-	  Requres((vi != vector->end() || bi == nullptr) &&
-		  (rhs.vi != vector->end() || rhs.bi == nullptr) &&
+	  Requres((vi != v->end() || bi == nullptr) &&
+		  (rhs.vi != v->end() || rhs.bi == nullptr) &&
 		  v == rhs->v);
 	  return vi <= rhs.vi && bi < rhs.bi;
 	}
 	bool operator <=(const iterator& rhs) const noexcept {
-	  Requres((vi != vector->end() || bi == nullptr) &&
-		  (rhs.vi != vector->end() || rhs.bi == nullptr) &&
+	  Requres((vi != v->end() || bi == nullptr) &&
+		  (rhs.vi != v->end() || rhs.bi == nullptr) &&
 		  v == rhs->v);
 	  return vi <= rhs.vi && bi <= rhs.bi;
 	}
 	bool operator >=(const iterator& rhs) const noexcept {
-	  Requres((vi != vector->end() || bi == nullptr) &&
-		  (rhs.vi != vector->end() || rhs.bi == nullptr) &&
+	  Requres((vi != v->end() || bi == nullptr) &&
+		  (rhs.vi != v->end() || rhs.bi == nullptr) &&
 		  v == rhs->v);
 	  return vi >= rhs.vi && bi >= rhs.bi;
 	}
 	bool operator >(const iterator& rhs) const noexcept {
-	  Requres((vi != vector->end() || bi == nullptr) &&
-		  (rhs.vi != vector->end() || rhs.bi == nullptr) &&
+	  Requres((vi != v->end() || bi == nullptr) &&
+		  (rhs.vi != v->end() || rhs.bi == nullptr) &&
 		  v == rhs->v);
 	  return vi > rhs.vi && bi >= rhs.bi;
 	}
 
       private:
 	buffvec const* v;
-	buffvec::iterator vi;
+	typename buffvec::iterator vi;
 	pointer bi;
 	size_type o;
       };
@@ -232,10 +233,10 @@ namespace crimson {
       public:
 	const_iterator() noexcept
 	  : v(nullptr), bi(nullptr) { };
-	const_iterator(buffvec* _v, buffvec::const_iterator _vi,
+	const_iterator(buffvec* _v, typename buffvec::const_iterator _vi,
 		       const_pointer _bi, size_type _o) noexcept
 	  : v(_v), vi(_vi), bi(_bi), o(_o) {
-	  Requres(vi != vector->end() || bi == nullptr);
+	  Requres(vi != v->end() || bi == nullptr);
 	};
 	const_iterator operator++() noexcept {
 	  const_iterator i = *this;
@@ -245,7 +246,7 @@ namespace crimson {
 	    ++vi;
 	    bi = (vi != v.end()) ? bi == vi->begin() : nullptr;
 	  }
-	  Ensures(vi != vector->end() || bi == nullptr);
+	  Ensures(vi != v->end() || bi == nullptr);
 	  return i;
 	}
 	const_iterator operator++(int) noexcept {
@@ -255,7 +256,7 @@ namespace crimson {
 	    ++vi;
 	    bi = (vi != v.end()) ? bi == vi->begin() : nullptr;
 	  }
-	  Ensures(vi != vector->end() || bi == nullptr);
+	  Ensures(vi != v->end() || bi == nullptr);
 	  return *this;
 	}
 
@@ -273,7 +274,7 @@ namespace crimson {
 	      bi = (vi == v.end() ? nullptr : vi->begin());
 	    }
 	  }
-	  Ensures(vi != vector->end() || bi == nullptr);
+	  Ensures(vi != v->end() || bi == nullptr);
 	  return *this;
 	}
 
@@ -287,7 +288,7 @@ namespace crimson {
 	    --bi;
 	  }
 	  --o;
-	  Ensures(vi != vector->end() || bi == nullptr);
+	  Ensures(vi != v->end() || bi == nullptr);
 	  return i;
 	}
 	const_iterator operator +(difference_type n) const noexcept {
@@ -304,7 +305,7 @@ namespace crimson {
 	    --bi;
 	  }
 	  --o;
-	  Ensures(vi != vector->end() || bi == nullptr);
+	  Ensures(vi != v->end() || bi == nullptr);
 	  return *this;
 	}
 	const_iterator operator -=(difference_type n) noexcept {
@@ -325,7 +326,7 @@ namespace crimson {
 	      bi = vi->end();
 	    }
 	  }
-	  Ensures(vi != vector->end() || bi == nullptr);
+	  Ensures(vi != v->end() || bi == nullptr);
 	  return *this;
 	}
 
@@ -342,9 +343,10 @@ namespace crimson {
 	const_reference operator *() const noexcept {
 	  return *bi;
 	}
-	const_pointer operator ->() const noxcept {
+	inline const_pointer operator ->() const noexcept {
 	  return *bi;
 	}
+
 	const_reference operator [](difference_type n) noexcept {
 	  const_iterator t(*this);
 
@@ -352,8 +354,8 @@ namespace crimson {
 	}
 
 	bool operator ==(const const_iterator& rhs) const noexcept {
-	  Requres((vi != vector->end() || bi == nullptr) &&
-		  (rhs.vi != vector->end() || rhs.bi == nullptr) &&
+	  Requres((vi != v->end() || bi == nullptr) &&
+		  (rhs.vi != v->end() || rhs.bi == nullptr) &&
 		  v == rhs->v);
 
 	  return (vi == rhs.vi && bi == rhs.vi);
@@ -362,66 +364,46 @@ namespace crimson {
 	  return !(*this == rhs);
 	}
 	bool operator <(const const_iterator& rhs) const noexcept {
-	  Requres((vi != vector->end() || bi == nullptr) &&
-		  (rhs.vi != vector->end() || rhs.bi == nullptr) &&
+	  Requres((vi != v->end() || bi == nullptr) &&
+		  (rhs.vi != v->end() || rhs.bi == nullptr) &&
 		  v == rhs->v);
 	  return vi <= rhs.vi && bi < rhs.bi;
 	}
 	bool operator <=(const const_iterator& rhs) const noexcept {
-	  Requres((vi != vector->end() || bi == nullptr) &&
-		  (rhs.vi != vector->end() || rhs.bi == nullptr) &&
+	  Requres((vi != v->end() || bi == nullptr) &&
+		  (rhs.vi != v->end() || rhs.bi == nullptr) &&
 		  v == rhs->v);
 	  return vi <= rhs.vi && bi <= rhs.bi;
 	}
 	bool operator >=(const const_iterator& rhs) const noexcept {
-	  Requres((vi != vector->end() || bi == nullptr) &&
-		  (rhs.vi != vector->end() || rhs.bi == nullptr) &&
+	  Requres((vi != v->end() || bi == nullptr) &&
+		  (rhs.vi != v->end() || rhs.bi == nullptr) &&
 		  v == rhs->v);
 	  return vi >= rhs.vi && bi >= rhs.bi;
 	}
 	bool operator >(const const_iterator& rhs) const noexcept {
-	  Requres((vi != vector->end() || bi == nullptr) &&
-		  (rhs.vi != vector->end() || rhs.bi == nullptr) &&
+	  Requres((vi != v->end() || bi == nullptr) &&
+		  (rhs.vi != v->end() || rhs.bi == nullptr) &&
 		  v == rhs->v);
 	  return vi > rhs.vi && bi >= rhs.bi;
 	}
 
       private:
-	const buffvec const* v;
-	buffvec::const_iterator vi;
-	const pointer bi;
+	const buffvec* const v;
+	typename buffvec::const_iterator vi;
+	const_pointer bi;
 	size_type o;
       };
 
-      typedef reverse_iterator = std::reverse_iterator<iterator>;
-      typedef const_reverse_iterator = std::reverse_iterator<const_iterator>;
+      using reverse_iterator = std::reverse_iterator<iterator>;
+      using const_reverse_iterator = std::reverse_iterator<const_iterator>;
 
       uint64_t offset;
       std::vector<temporary_buffer<char>, Allocator> data;
 
-      /// Return a continguous range within the given offset and length
-      ///
-      /// This function finds and returns the first contiguous range
-      /// of bytes within the specified offset and length. The result
-      /// may be shorter than the length specified even if there is
-      /// more data in the invec. Callers must check the length of the
-      /// returned buffer and call next_contig to continue.
-      std::experimental::string_view contig_range(uint64_t off, uint64_t len) {
-	Expects(off >= offset);
-	off -= offset;
-	auto i = data.begin();
-	while (i != data.end() && i->size() > off) {
-	  off -= size;
-	  ++i;
-	}
-	if (i == data.end())
-	  return std::vector<temporary_buffer<char>>();
-
-	if (
-      };
     };
 
     /// Data being read from the store
-    using outvec = std::vector<temporary_buffer<char>> data;
+    using outvec = std::vector<temporary_buffer<char>>;
   } // namespace store
 } // namespace crimson

@@ -45,26 +45,27 @@
 #include <core/sstring.hh>
 #include <core/temporary_buffer.hh>
 
+#include "GSL/include/gsl.h"
 #include "cxx_function/cxx_function.hpp"
-
-#include "Compound.h"
 
 namespace crimson {
 
   /// Storage interface
   namespace store {
-    /// Data being written in to the Store
-    ///
-    /// Represent a set of buffers and the offset to which they should
-    /// be written. The Store will never modify a value of this type.
-    struct invec {
-      uint64_t offset;
-      std::vector<temporary_buffer<char>> data;
+    class Collection;
+    using CollectionRef = foreign_ptr<boost::intrusive_ptr<Collection>>;
+
+    using Offset = uint64_t;
+    using Length = uint64_t;
+    struct Range {
+      Offset offset;
+      Length length;
+
+      Range(Offset _offset, Length _length) :
+	offset(_offset), length(_length) {
+	Expects(std::numeric_limits<Length>::max() - offset >= length);
+      }
     };
-
-    /// Data being read from the store
-    using outvec = std::vector<temporary_buffer<char>> data;
-
     /**
      * a sequencer orders transactions
      *
@@ -86,11 +87,7 @@ namespace crimson {
     };
 
     class Store {
-      Manager& manager;
     public:
-      virtual std::pair<future<CompoundRes> future<>> exec_compound(
-	Sequencer& osr, Compound& t) = 0;
-
       virtual ~Store() = default;
       Store(const Store& o) = delete;
       const Store& operator=(const Store& o) = delete;
@@ -113,6 +110,26 @@ namespace crimson {
        */
       virtual future<> set_fsid(boost::uuids::uuid u) = 0;
       virtual future<boost::uuids::uuid> get_fsid() const = 0;
+
+      /// Make a collection
+      ///
+      /// Create a new collection. The collection must not exist prior
+      /// to the call.
+      ///
+      /// \param[in] cid Collection ID
+      virtual future<CollectionRef>create_collection(sstring cid) = 0;
+      /// Enumerate all collections in this store
+      ///
+      /// \note Ceph ObjectStore just returns them all at once. Do we
+      /// think we'll need cursor-like logic the way we do for
+      /// attribute and object enumeration?
+      virtual future<sstring> enumerate_collections() const = 0;
+      /// Commit the entire Store
+      ///
+      /// All of it. No questions asked. This function acts as a
+      /// barrier on all operations. No operations may begin until all
+      /// outstanding ones are completed and stored stably.
+      virtual future<> commit() = 0;
     };
   } // namespace store
 } // namespace crimson

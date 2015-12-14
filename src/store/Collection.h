@@ -74,6 +74,59 @@ namespace crimson {
       const sstring& get_cid() const {
 	return cid;
       }
+
+      /// Ensure the existance of an object in a collection
+      ///
+      /// Create an empty object if necessary
+      ///
+      /// @param[in] oid  Name of the object that should exist
+      /// @param[in] excl True if the object must not already exist
+      /// @return A reference to the object
+      virtual future<ObjectRef> create(sstring oid, bool excl = false) = 0;
+      /// Remove this collection
+      ///
+      /// The collection must be empty
+      virtual future<>remove() = 0;
+      /// Split this collection
+      ///
+      /// Move objects matching a predicate into another
+      /// collection.
+      ///
+      /// \warning Similar concerns apply as to move_coll_rename.
+      ///
+      /// \note We use a unique_function for the predicate rather than
+      /// a template, since this is virtual.
+      ///
+      /// \param[in] dest Destination
+      ///
+      /// \see move_coll_rename
+      virtual future<> split_collection(
+	Collection& dest,
+	cxx_function::unique_function<bool(const sstring& oid)> pred) = 0;
+      /// Enumerate objects in a collection
+      ///
+      ///
+      /// \param[in] cursor    If present, a cursor returned by a
+      ///                      previous enumerate_objects call.
+      /// \param[in] to_return Maximum number of OIDs to return. The
+      ///                      store may return fewer (even if more
+      ///                      remain) but not more.
+      ///
+      /// \see obj_cursor
+      virtual future<std::vector<sstring>, OidCursorRef> enumerate_objects(
+	boost::optional<OidCursorRef> cursor,
+	size_t to_return) const = 0;
+      /// Get cursor for a given object
+      ///
+      /// This function gives a cursor that will continue an
+      /// enumeration as if a previous enumeration had ended just
+      /// before returning `oid`.
+      ///
+      /// \param[in] oid OID to (exclusively) lower-bound enumeration
+      ///
+      /// \note Not supported on stores without a well-defined
+      /// enumeration order for oids.
+      virtual future<OidCursorRef> obj_cursor(sstring oid) const = 0;
     };
   } // namespace store
 } // namespace crimson
