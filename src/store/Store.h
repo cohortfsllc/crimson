@@ -66,18 +66,6 @@ namespace crimson {
 	Expects(std::numeric_limits<Length>::max() - offset >= length);
       }
     };
-    /**
-     * a sequencer orders transactions
-     *
-     * Any transactions queued under a given sequencer will be applied
-     * in sequence.  Transactions queued under different sequencers
-     * may run in parallel.
-     *
-     * Clients of Store create and maintain their own Sequencer
-     * objects.  When a list of transactions is queued the caller
-     * specifies a Sequencer to be used.
-     *
-     */
 
     class Sequencer {
     public:
@@ -88,6 +76,7 @@ namespace crimson {
 
     class Store {
     public:
+      Store() = default;
       virtual ~Store() = default;
       Store(const Store& o) = delete;
       const Store& operator=(const Store& o) = delete;

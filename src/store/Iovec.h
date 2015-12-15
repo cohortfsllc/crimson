@@ -66,7 +66,7 @@ namespace crimson {
       public:
 	iterator() noexcept
 	  : v(nullptr), bi(nullptr) { };
-	iterator(buffvec* _v, typename buffvec::iterator _vi,
+	iterator(not_null<buffvec*> _v, typename buffvec::iterator _vi,
 		 pointer _bi, size_type _o) noexcept
 	  : v(_v), vi(_vi), bi(_bi), o(_o) {
 	  Requres(vi != v->end() || bi == nullptr);
@@ -233,7 +233,8 @@ namespace crimson {
       public:
 	const_iterator() noexcept
 	  : v(nullptr), bi(nullptr) { };
-	const_iterator(buffvec* _v, typename buffvec::const_iterator _vi,
+	const_iterator(not_null<const buffvec*> _v,
+		       typename buffvec::const_iterator _vi,
 		       const_pointer _bi, size_type _o) noexcept
 	  : v(_v), vi(_vi), bi(_bi), o(_o) {
 	  Requres(vi != v->end() || bi == nullptr);
@@ -398,9 +399,145 @@ namespace crimson {
       using reverse_iterator = std::reverse_iterator<iterator>;
       using const_reverse_iterator = std::reverse_iterator<const_iterator>;
 
+      /// Continguous buffer iterator
+      ///
+      /// Iterate over our buffers.
+      class contig_iterator : public std::iterator<
+	std::bidirectional_iterator_tag, GSL::string_span> {
+      public:
+	contig_iterator() noexcept
+	  : v(nullptr) { };
+	contig_iterator(not_null<buffvec*> _v, buffvec::iterator _vi) noexcept
+	  : v(_v), vi(_vi) {};
+	contig_iterator operator++(int) noexcept {
+	  ++vi;
+	  return *this;
+	}
+
+	iterator operator++() noexcept {
+	  iterator i = *this;
+	  ++vi;
+	  return i;
+	}
+	iterator operator --(int) noexcept {
+	  --vi;
+	  return *this;
+	}
+	iterator operator--() noexcept {
+	  iterator i = *this;
+	  --vi;
+	  return i;
+	}
+
+	pointer operator ->() const noexcept {
+	  return GSL::string_span(bi->get_write(), bi->length());
+	}
+	reference operator *() const noexcept {
+	  return GSL::string_span(bi->get_write(), bi->length());
+	}
+
+	bool operator ==(const iterator& rhs) const noexcept {
+	  Requres(v == rhs->v);
+	  return vi == rhs.vi;
+	}
+	bool operator !=(const iterator& rhs) const noexcept {
+	  Requres(v == rhs->v);
+	  return vi != rhs.vi;
+	}
+	bool operator <(const iterator& rhs) const noexcept {
+	  Requres(v == rhs->v);
+	  return vi < rhs.vi;
+	}
+	bool operator <=(const iterator& rhs) const noexcept {
+	  Requres(v == rhs->v);
+	  return vi <= rhs.vi;
+	}
+	bool operator >=(const iterator& rhs) const noexcept {
+	  Requres(v == rhs->v);
+	  return vi >= rhs.vi;
+	}
+	bool operator >(const iterator& rhs) const noexcept {
+	  Requres(v == rhs->v);
+	  return vi > rhs.vi;
+	}
+
+      private:
+	buffvec const* v;
+	typename buffvec::iterator vi;
+      };
+      /// Continguous buffer iterator
+      ///
+      /// Iterate over our buffers.
+      class const_contig_iterator : public std::iterator<
+	std::bidirectional_iterator_tag, const GSL::string_span> {
+      public:
+	contig_iterator() noexcept
+	  : v(nullptr) { };
+	contig_iterator(not_null<buffvec*> _v, buffvec::iterator _vi) noexcept
+	  : v(_v), vi(_vi) {};
+	contig_iterator operator++(int) noexcept {
+	  ++vi;
+	  return *this;
+	}
+
+	iterator operator++() noexcept {
+	  iterator i = *this;
+	  ++vi;
+	  return i;
+	}
+	iterator operator --(int) noexcept {
+	  --vi;
+	  return *this;
+	}
+	iterator operator--() noexcept {
+	  iterator i = *this;
+	  --vi;
+	  return i;
+	}
+
+	const pointer operator ->() const noexcept {
+	  return GSL::string_span(bi->get_write(), bi->length());
+	}
+	value_type operator *() const noexcept {
+	  return GSL::string_span(bi->get_write(), bi->length());
+	}
+
+	bool operator ==(const iterator& rhs) const noexcept {
+	  Requres(v == rhs->v);
+	  return vi == rhs.vi;
+	}
+	bool operator !=(const iterator& rhs) const noexcept {
+	  Requres(v == rhs->v);
+	  return vi != rhs.vi;
+	}
+	bool operator <(const iterator& rhs) const noexcept {
+	  Requres(v == rhs->v);
+	  return vi < rhs.vi;
+	}
+	bool operator <=(const iterator& rhs) const noexcept {
+	  Requres(v == rhs->v);
+	  return vi <= rhs.vi;
+	}
+	bool operator >=(const iterator& rhs) const noexcept {
+	  Requres(v == rhs->v);
+	  return vi >= rhs.vi;
+	}
+	bool operator >(const iterator& rhs) const noexcept {
+	  Requres(v == rhs->v);
+	  return vi > rhs.vi;
+	}
+
+      private:
+	const buffvec const* v;
+	typename buffvec::const_iterator vi;
+      };
+
+      using reverse_contig_iterator = std::reverse_iterator<contig_iterator>;
+      using reverse_const_reverse_iterator = std::reverse_iterator<
+	const_contig_iterator>;
+
       uint64_t offset;
       std::vector<temporary_buffer<char>, Allocator> data;
-
     };
 
     /// Data being read from the store

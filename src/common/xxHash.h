@@ -50,36 +50,45 @@ namespace crimson {
       XXH64_reset(&state, seed);
     }
 
-    template<typename C>
-    void update(const std::experimental::basic_string_view<C> v) noexcept {
+    template<typename Cont>
+    void update(const Cont& v,
+		typename std::result_of_t<decltype(&Cont::data)(
+		  Cont)> = nullptr) noexcept {
       Expects(v.data() != nullptr);
       auto ret = XXH64_update(&state,
 			      static_cast<void*>(v.data()),
-			      v.length() * sizeof(C));
+			      v.length() * sizeof(Cont::value_type));
       Ensures(ret == XXH_OK);
     }
-    template<typename C>
-    void update(const gsl::not_null<gsl::basic_string_view<C>> v) noexcept {
+    template<typename CharT, typename Size, Size max_size>
+    void update(const basic_sstring<CharT, Size, max_size>& v) noexcept {
+      Expects(v.c_str() != nullptr);
       auto ret = XXH64_update(&state,
-			      static_cast<void*>(v.data()),
-			      v.length() * sizeof(C));
+			      static_cast<void*>(v.c_str()),
+			      v.length() * sizeof(CharT));
       Ensures(ret == XXH_OK);
     }
-    void digest() const noexcept {
+
+    uint64_t digest() const noexcept {
       return XXH64_digest(&state);
     }
 
-    template<typename C>
-    static uint64_t operator()(const std::experimental::basic_string_view<C> v,
-			       uint64_t seed = 0) noexcept {
+    template<typename Cont>
+    uint64_t operator()(const Cont& v,
+			uint64_t seed = 0,
+			typename std::result_of_t<decltype(&Cont::data)(
+			  Cont)> = nullptr) noexcept {
       Expects(v.data() != nullptr);
-      return XXH64(static_cast<void*>(v.data()), v.length() * sizeof(C), seed);
+      return XXH64(static_cast<void*>(v.data()),
+		   v.length() * sizeof(Cont::value_type), seed);
     }
-    template<typename C>
-    static uint64_t operator()(const gsl::not_null<
-				 gsl::basic_string_view<C>> v,
-			       uint64_t seed = 0) noexcept {
-      return XXH64(static_cast<void>v.data(), v.length() * sizeof(C), seed);
+
+    template<typename CharT, typename Size, Size max_size>
+    uint64_t operator()(const basic_sstring<CharT, Size, max_size>& v,
+			uint64_t seed = 0) noexcept {
+      Expects(v.c_str() != nullptr);
+      return XXH64(static_cast<const void*>(v.c_str()),
+		   v.length() * sizeof(CharT), seed);
     }
   };
 } // namespace crimson

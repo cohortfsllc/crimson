@@ -37,96 +37,29 @@
 #include <boost/uuid/uuid.hpp>
 #include <boost/uuid/random_generator.hpp>
 
+#include <core/slab.hh>
+
 #include "common/xxHash.h"
 
-#include "Store.h"
+#include "store/Collection.h"
+#include "store/Store.h"
+
 
 namespace crimson {
   /// Storage interface
   namespace store {
-    namspace _mem {
-      /// A collection is a grouping of objects.
-      ///
-      /// Collections have names and can be enumerated in order.  Like
-      /// an individual object, a collection also has a set of xattrs.
-
-      class MemCollection : public Collection, public slab_item_base {
-      private:
-	MemStore& mstore() {
-	  return static_cast<MemStore&>(store);
-	}
-
-	std::vector<foreign_ptr<std::unique_ptr<MemObject::cache>> trees;
-
-	MemCollection(uint32_t _slab_page_index, Store& _store, sstring _cid)
-	  : Collection(_slab_page_index, _store,  _cid) {
-	  trees.resize(smp::count);
-	}
-      public:
-	static future<CollectionRef> make(Store& _store, sstring _cid) {
-	  auto cpu = get_cpu(_cid);
-	  Expects(cpu == engine().cpu_id());
-	  auto slab = _store.collection_slab(cpu);
-	  std::unique_ptr<NihilCollection> new_item(
-	  slab->create(sizeof(NihilCollection), _store, _cid),
-	  [slab](NihilCollection* c) {
-	    slab->free(c);
-	  });
-	  return parallel_for_each(
-	    boost::irange<unsigned>(0, smp::count),
-	    [new_item] (unsigned c) mutable {
-	      return smp::submit_to(c, [this, args] () mutable {
-		  trees[engine().cpu_id()] =
-		    make_foreign(std::make_unique<NihilObject::cache>());
-		});
-	    }).then([new_item] {
-		return make_ready_future<CollectionRef>(new_item.release());
-	      });
-	}
-
-	virtual ~MemCollection() = default;
-
-	MemCollection(const MemCollection&) = delete;
-	MemCollection& operator =(const MemCollection&) = delete;
-	MemCollection(MemCollection&&) = delete;
-	MemCollection& operator =(MemCollection&&) = delete;
-
-      unsigned get_cpu(const sstring& oid) const overrides {
-	xxHash(oid) % smp::count;
-      }
-
-      private:
-	static ObjectRef get_objectref_local(const sstring& oid,
-					     Object::cache& tree,
-					     CollectionRef&& me) const {}
-      public:
-	future<ObjectRef> get_objectref(const sstring& oid) const overrides {
-	  auto cpu = get_cpu(oid);
-	  if (cpu == engine.cpu_id()) {
-	    return make_ready_future<ObjectRef>(
-	      get_objectref_local(oid, trees[cpu], CollectionRef(this)));
-	  } else {
-	    return smp::submit_to(cpu, [c = CollectionRef(this)] mutable {
-		trees[engine().cpu_id()] =
-		  make_foreign(std::make_unique<NihilObject::cache>());
-	      });
-	  }
-	}
-      };
-
-      class Mem : public Store {
+  /// Memory-backed storage
+    namespace mem {
+      class Store : public crimson::store::Store {
       private:
 	boost::uuids::uuid id;
       public:
-	std::pair<future<CompoundRes> future<>> exec_compound(
-	  Sequencer& osr, Compound& t) override;
-
-	MemStore() noexcept : id(boost::uuids::random_generator()()) {}
-	virtual ~MemStore() = default;
-	MemStore(const Store& o) = delete;
-	const MemStore& operator=(const MemStore& o) = delete;
-	MemStore(MemStore&& o) = delete;
-	const memStore& operator=(MemStore&& o) = delete;
+	Store() noexcept : id(boost::uuids::random_generator()()) {}
+	virtual ~Store() = default;
+	Store(const Store& o) = delete;
+	const Store& operator=(const Store& o) = delete;
+	Store(Store&& o) = delete;
+	const Store& operator=(Store&& o) = delete;
 
 	// mgmt
 	size_t get_max_object_name_length() const noexcept override {
@@ -139,10 +72,10 @@ namespace crimson {
 	  return make_ready_future<>();
 	}
 
-      /// Get the CPU to look up a collection
-      unsigned get_cpu(const sstring& cid) const noexcept override {
-	xxHash(cid) % smp::count;
-      }
+	/// Get the CPU to look up a collection
+	unsigned get_cpu(const sstring& cid) const noexcept override {
+	  return xxHash()(cid) % smp::count;
+	}
 
 	/**
 	 * Set and get internal fsid for this instance. No external data
@@ -152,12 +85,31 @@ namespace crimson {
 	  id = u;
 	  return make_ready_future<>();
 	}
-	future<boost::uuids::uuid> get_fsid() override {
+	future<boost::uuids::uuid> get_fsid() const override {
 	  return make_ready_future<boost::uuids::uuid>(id);
 	}
+
+	/// Make a collection
+	///
+	/// Create a new collection. The collection must not exist prior
+	/// to the call.
+	///
+	/// \param[in] cid Collection ID
+	future<CollectionRef>create_collection(sstring cid) override;
+	/// Enumerate all collections in this store
+	///
+	/// \note Ceph ObjectStore just returns them all at once. Do we
+	/// think we'll need cursor-like logic the way we do for
+	/// attribute and object enumeration?
+	future<std::vector<sstring>> enumerate_collections() const override;
+	/// Commit the entire Store
+	///
+	/// All of it. No questions asked. This function acts as a
+	/// barrier on all operations. No operations may begin until all
+	/// outstanding ones are completed and stored stably.
+	future<> commit() override;
       };
-    } // namespace _
-    using _::Mem;
+    } // namespace mem
   } // namespace store
 } // namespace crimson
 

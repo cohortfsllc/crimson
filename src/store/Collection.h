@@ -31,12 +31,22 @@
 #ifndef CRIMSON_STORE_COLLECTION_H
 #define CRIMSON_STORE_COLLECTION_H
 
+#include <boost/intrusive_ptr.hpp>
 #include <core/sharded.hh>
+
+#include "cxx_function/cxx_function.hpp"
 
 namespace crimson {
 
   /// Storage interface
   namespace store {
+    class Store;
+    class Object;
+    using ObjectRef = foreign_ptr<boost::intrusive_ptr<Object>>;
+
+
+    class OidCursor;
+    using OidCursorRef = foreign_ptr<boost::intrusive_ptr<OidCursor>>;
     /// A collection is a grouping of objects.
     ///
     /// Collections have names and can be enumerated in order.  Like an
@@ -57,10 +67,8 @@ namespace crimson {
 	c->unref();
       }
 
-      explicit Collection(uint32_t _slab_page_index, Store& _store,
-			  sstring _cid)
-	: slab_page_index(_slab_page_index), store(_store),
-	  cid(std::move(_cid)) {}
+      explicit Collection(Store& _store, sstring _cid)
+	: store(_store), cid(std::move(_cid)) {}
 
       virtual ~Collection() = default;
 
