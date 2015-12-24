@@ -54,8 +54,7 @@ future<uint32_t> read_segment_count(input_stream<char>& in)
     [] (auto data) {
       if (data.size() != 4)
         throw ProtocolError("failed to read segment count");
-      auto p = unaligned_cast<uint32_t>(data.get());
-      return ::net::ntoh(*p) + 1;
+      return *unaligned_cast<uint32_t>(data.get()) + 1;
     });
 }
 
@@ -77,13 +76,10 @@ class SegmentConsumer {
   segment_array_t segments;
   uint32_t bytes_remaining;
 
-  /// Transform sizes to host byte order and calculate the total message size
+  /// return the total message size
   static uint32_t total_bytes(segment_t& sizes) {
     return std::accumulate(unaligned_cast<uint32_t>(sizes.begin()),
-                           unaligned_cast<uint32_t>(sizes.end()), 0,
-                           [] (auto sum, auto next) {
-                             return sum + ::net::ntoh(next);
-                           });
+                           unaligned_cast<uint32_t>(sizes.end()), 0);
   }
 
  public:
@@ -126,7 +122,7 @@ class SegmentConsumer {
 
 future<> write_segment_count(uint32_t count, output_stream<char>& out)
 {
-  auto data = ::net::hton(count - 1);
+  auto data = count - 1;
   return out.write(reinterpret_cast<const char*>(&data), 4);
 }
 
@@ -135,8 +131,7 @@ future<> write_segment_sizes(Iter begin, Iter end, output_stream<char>& out)
 {
   return do_for_each(begin, end,
     [&out] (auto segment) {
-      uint32_t size = segment.asBytes().size(); // size in bytes
-      uint32_t data = ::net::hton(size);
+      uint32_t data = segment.asBytes().size(); // size in bytes
       return out.write(reinterpret_cast<const char*>(&data), 4);
     });
 }
