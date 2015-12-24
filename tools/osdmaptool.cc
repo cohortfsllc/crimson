@@ -23,7 +23,7 @@
 #define KJ_STD_COMPAT // for std algorithms with capnp::List iterators
 
 #include "osd_map.capnp.h"
-#include <capnp/serialize-packed.h>
+#include <capnp/serialize.h>
 #include <kj/io.h>
 #include <core/posix.hh>
 #include <gsl.h>
@@ -84,7 +84,7 @@ int osdmap_create(int fd, std::vector<std::string>&& args,
 {
   capnp::MallocMessageBuilder builder;
   auto osdmap = builder.initRoot<proto::osd::OsdMap>();
-  writePackedMessageToFd(fd, builder);
+  writeMessageToFd(fd, builder);
 
   std::cout << "Successfully created:\n\n" << osdmap.toString() << std::endl;
   return EXIT_SUCCESS;
@@ -94,7 +94,7 @@ int osdmap_create(int fd, std::vector<std::string>&& args,
 int osdmap_show(int fd, std::vector<std::string>&& args,
                 bpo::variables_map& cfg)
 {
-  capnp::PackedFdMessageReader reader{fd};
+  capnp::StreamFdMessageReader reader{fd};
   auto osdmap = reader.getRoot<proto::osd::OsdMap>();
   std::cout << osdmap.toString() << std::endl;
   return EXIT_SUCCESS;
@@ -132,7 +132,7 @@ int osdmap_add_osd(int fd, std::vector<std::string>&& args,
   }
 
   // read in the original osdmap
-  capnp::PackedFdMessageReader reader{fd};
+  capnp::StreamFdMessageReader reader{fd};
   auto orig = reader.getRoot<proto::osd::OsdMap>();
 
   auto entries = orig.getEntries();
@@ -177,7 +177,7 @@ int osdmap_add_osd(int fd, std::vector<std::string>&& args,
   auto offset = ::lseek(fd, 0, SEEK_SET);
   throw_system_error_on(offset == (off_t)-1, "lseek");
 
-  writePackedMessageToFd(fd, builder);
+  writeMessageToFd(fd, builder);
 
   std::cout << "Added osd " << id << ".\n\n"
       << osdmap.toString() << std::endl;
@@ -208,7 +208,7 @@ int osdmap_remove_osd(int fd, std::vector<std::string>&& args,
   }
 
   // read in the original osdmap
-  capnp::PackedFdMessageReader reader{fd};
+  capnp::StreamFdMessageReader reader{fd};
   auto orig = reader.getRoot<proto::osd::OsdMap>();
 
   // make sure the entry exists
@@ -239,7 +239,7 @@ int osdmap_remove_osd(int fd, std::vector<std::string>&& args,
   auto offset = ::lseek(fd, 0, SEEK_SET);
   throw_system_error_on(offset == (off_t)-1, "lseek");
 
-  writePackedMessageToFd(fd, builder);
+  writeMessageToFd(fd, builder);
 
   std::cout << "Removed osd " << id << ".\n\n"
       << osdmap.toString() << std::endl;
@@ -278,7 +278,7 @@ int osdmap_add_addrs(int fd, std::vector<std::string>&& args,
   }
 
   // read in the original osdmap
-  capnp::PackedFdMessageReader reader{fd};
+  capnp::StreamFdMessageReader reader{fd};
   auto orig = reader.getRoot<proto::osd::OsdMap>();
 
   // make sure the entry exists
@@ -339,7 +339,7 @@ int osdmap_add_addrs(int fd, std::vector<std::string>&& args,
   auto offset = ::lseek(fd, 0, SEEK_SET);
   throw_system_error_on(offset == (off_t)-1, "lseek");
 
-  writePackedMessageToFd(fd, builder);
+  writeMessageToFd(fd, builder);
 
   std::cout << "Added addresses to osd " << id << ".\n\n"
       << osd.toString() << std::endl;
@@ -378,7 +378,7 @@ int osdmap_remove_addrs(int fd, std::vector<std::string>&& args,
   }
 
   // read in the original osdmap
-  capnp::PackedFdMessageReader reader{fd};
+  capnp::StreamFdMessageReader reader{fd};
   auto orig = reader.getRoot<proto::osd::OsdMap>();
 
   // make sure the entry exists
@@ -445,7 +445,7 @@ int osdmap_remove_addrs(int fd, std::vector<std::string>&& args,
   auto offset = ::lseek(fd, 0, SEEK_SET);
   throw_system_error_on(offset == (off_t)-1, "lseek");
 
-  writePackedMessageToFd(fd, builder);
+  writeMessageToFd(fd, builder);
 
   std::cout << "Removed addresses from osd " << id << ".\n\n"
       << osd.toString() << std::endl;
