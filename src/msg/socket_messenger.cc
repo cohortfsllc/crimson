@@ -21,7 +21,7 @@
 // 02110-1301 USA
 
 #include "socket_messenger.h"
-#include "common/segment_message_reader.h"
+#include "common/buffer_array_message_reader.h"
 #include <algorithm>
 
 using namespace crimson;
@@ -29,9 +29,9 @@ using namespace crimson::net;
 
 namespace {
 
-class ProtocolError : public std::runtime_error {
+class SocketProtocolError : public std::runtime_error {
  public:
-  ProtocolError(const std::string& msg) : std::runtime_error(msg) {}
+  SocketProtocolError(const std::string& msg) : std::runtime_error(msg) {}
 };
 
 // The following functions implement the segment framing procol recommended
@@ -53,17 +53,18 @@ future<uint32_t> read_segment_count(input_stream<char>& in)
   return in.read_exactly(4).then(
     [] (auto data) {
       if (data.size() != 4)
-        throw ProtocolError("failed to read segment count");
+        throw SocketProtocolError("failed to read segment count");
       return *unaligned_cast<uint32_t>(data.get()) + 1;
     });
 }
 
-future<segment_t> read_segment_sizes(input_stream<char>& in, uint32_t count)
+future<temporary_buffer<char>> read_segment_sizes(input_stream<char>& in,
+                                                  uint32_t count)
 {
   return in.read_exactly(4*count).then(
     [count] (auto data) {
       if (data.size() < 4*count)
-        throw ProtocolError("failed to read segment sizes");
+        throw SocketProtocolError("failed to read segment sizes");
       return data;
     });
 }
@@ -71,52 +72,54 @@ future<segment_t> read_segment_sizes(input_stream<char>& in, uint32_t count)
 /// An input_stream consumer that collects buffer segments for the message.
 /// We're given the array of segment sizes, but we only care about their sum
 /// because we know input_stream::consume() will give us zero-copy buffers.
-template <class CharType>
 class SegmentConsumer {
-  segment_array_t segments;
+  using remainder = typename input_stream<char>::unconsumed_remainder;
+  using tmp_buf = temporary_buffer<char>;
+
+  std::vector<tmp_buf> segments;
   uint32_t bytes_remaining;
 
   /// return the total message size
-  static uint32_t total_bytes(segment_t& sizes) {
+  static uint32_t total_bytes(tmp_buf& sizes) {
     return std::accumulate(unaligned_cast<uint32_t>(sizes.begin()),
                            unaligned_cast<uint32_t>(sizes.end()), 0);
   }
 
  public:
-  SegmentConsumer(segment_t&& sizes) : bytes_remaining(total_bytes(sizes)) {
+  SegmentConsumer(tmp_buf&& sizes) : bytes_remaining(total_bytes(sizes)) {
     segments.reserve(sizes.size());
   }
 
-  segment_array_t take_segments() { return std::move(segments); }
+  std::vector<tmp_buf> take_segments() {
+    return std::move(segments);
+  }
 
-  using unconsumed_remainder = typename input_stream<CharType>::unconsumed_remainder;
-  using tmp_buf = temporary_buffer<CharType>;
-
-  future<unconsumed_remainder> operator()(tmp_buf data) {
+  /// consume a buffer (satisfies input_stream::ConsumerConcept)
+  future<remainder> operator()(tmp_buf data) {
     // return an empty buffer to declare that we're done
-    if (bytes_remaining == 0)
-      return make_ready_future<unconsumed_remainder>(tmp_buf{});
-
+    if (bytes_remaining == 0) {
+      return make_ready_future<remainder>(tmp_buf{});
+    }
     // return an undefined remainder to ask for another buffer
-    if (data.empty())
-      return make_ready_future<unconsumed_remainder>(std::experimental::nullopt);
-
+    if (data.empty()) {
+      return make_ready_future<remainder>(std::experimental::nullopt);
+    }
     if (bytes_remaining > data.size()) {
       // take the whole buffer and ask for another
       bytes_remaining -= data.size();
       segments.emplace_back(std::move(data));
-      return make_ready_future<unconsumed_remainder>(std::experimental::nullopt);
+      return make_ready_future<remainder>(std::experimental::nullopt);
     }
 
     // chop off the bytes we need and return the remainder
     auto len = data.size() - bytes_remaining;
-    auto remainder = data.share(bytes_remaining, len);
+    auto rem = data.share(bytes_remaining, len);
 
     data.trim(bytes_remaining);
     segments.emplace_back(std::move(data));
 
     bytes_remaining = 0;
-    return make_ready_future<unconsumed_remainder>(std::move(remainder));
+    return make_ready_future<remainder>(std::move(rem));
   }
 };
 
@@ -136,7 +139,8 @@ future<> write_segment_sizes(Iter begin, Iter end, output_stream<char>& out)
     });
 }
 
-future<> write_frame(kj_segment_array_t segments, output_stream<char>& out)
+future<> write_frame(kj::ArrayPtr<const kj::ArrayPtr<const word>> segments,
+                     output_stream<char>& out)
 {
   return write_segment_count(segments.size(), out).then(
     [&out, segments] {
@@ -158,10 +162,10 @@ future<Connection::MessageReaderPtr> SocketConnection::read_message()
     [this] (auto count) {
       return read_segment_sizes(in, count).then(
         [this, count] (auto sizes) {
-          SegmentConsumer<char> c(std::move(sizes));
+          SegmentConsumer c(std::move(sizes));
           auto consume = in.consume(c);
           return consume.then([c = std::move(c)] () mutable -> MessageReaderPtr {
-              return std::make_unique<SegmentMessageReader>(c.take_segments());
+              return std::make_unique<BufferArrayMessageReader<>>(c.take_segments());
             });
         });
     });
