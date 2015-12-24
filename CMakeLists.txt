@@ -13,6 +13,9 @@ include_directories(src/cxx_function)
 # protocol definitions
 add_subdirectory(proto)
 
+include_directories(src)
+include_directories(src/msg)
+
 # crimson source
 add_subdirectory(src)
 
