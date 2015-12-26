@@ -22,7 +22,8 @@
 
 #pragma once
 
-#include <core/temporary_buffer.hh>
+#include <core/file.hh>
+#include <core/iostream.hh>
 #include <capnp/message.h>
 #include <gsl.h>
 #include <iomanip>
@@ -33,6 +34,14 @@ namespace crimson {
 using capnp::byte;
 /// 64-bit words are the unit of capnp buffer segments
 using capnp::word;
+
+/// Construct a kj::ArrayPtr that points to an owned temporary_buffer
+template <typename T, typename C>
+inline kj::ArrayPtr<T> kj_buffer_cast(temporary_buffer<C>& s)
+{
+  Expects(s.size() % sizeof(T) == 0); // would truncate the buffer
+  return {reinterpret_cast<T*>(s.get_write()), s.size() / sizeof(T)};
+}
 
 /// Construct a kj::ArrayPtr that points to an owned temporary_buffer
 template <typename T, typename C>
@@ -72,17 +81,19 @@ inline std::ostream& operator<< <const byte>(std::ostream& out,
 }
 
 
-/// A MessageReader similar to capnp::SegmentArrayMessageReader, except that it
-/// takes ownership of the given segments. That means it must not be destructed
-/// while there are outstanding references to its segments.
-template <typename C = char,
-          typename Segment = temporary_buffer<C>,
-          typename Array = std::vector<Segment>>
-class BufferArrayMessageReader final : public capnp::MessageReader {
-  using Opts = capnp::ReaderOptions;
-  Array segments;
+/**
+ * A MessageReader similar to capnp::SegmentArrayMessageReader, except that it
+ * takes ownership of the given segments. That means it must not be destructed
+ * while there are outstanding references to its segments.
+ */
+class BufferArrayMessageReader : public capnp::MessageReader {
  public:
-  BufferArrayMessageReader(Array&& segments, Opts options = Opts())
+  using Opts = capnp::ReaderOptions;
+  using Segment = temporary_buffer<char>;
+  using Vector = std::vector<Segment>;
+
+  /// Constructs a message reader, taking ownership of the given buffer segments
+  BufferArrayMessageReader(Vector&& segments, Opts options = Opts())
     : MessageReader(options), segments(std::move(segments)) {}
 
   /// Returns an ArrayPtr to the given buffer segment
@@ -91,6 +102,16 @@ class BufferArrayMessageReader final : public capnp::MessageReader {
       return nullptr;
     return kj_buffer_cast<word>(segments[id]);
   }
+
+ private:
+  Vector segments;
 };
+
+
+/// Read a message from the input stream
+future<std::unique_ptr<capnp::MessageReader>> readMessage(input_stream<char>& in);
+
+/// Write a message to the output stream
+future<> writeMessage(output_stream<char>& out, capnp::MessageBuilder& message);
 
 } // namespace crimson

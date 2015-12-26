@@ -1,5 +1,6 @@
 set(messenger_srcs
 	direct_messenger.cc
+	message_helpers.cc
 	socket_messenger.cc
 	)
 add_library(messenger OBJECT ${messenger_srcs})
