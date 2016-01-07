@@ -36,511 +36,405 @@ namespace crimson {
 
   /// Storage interface
   namespace store {
-    /// Data being written in to the Store
-    ///
-    /// Represent a set of buffers and the offset to which they should
-    /// be written. The Store will never modify a value of this type.
-    template<typename Allocator = std::allocator<char>>
-    struct invec {
-    private:
-      using buffvec = std::vector<temporary_buffer<char>, Allocator>;
-    public:
-      using member_type = char;
-      using size_type = std::size_t;
-      using difference_type = std::ptrdiff_t;
-      using allocator_type = Allocator;
-      using reference = member_type&;
-      using const_reference = const member_type&;
-      using pointer = typename std::allocator_traits<Allocator>::pointer;
-      using const_pointer = typename std::allocator_traits<Allocator>
-	::const_pointer;
+    namespace _ {
+      using boost::intrusive::set_base_hook;
+      using boost::intrusive::link_mode;
+      using boost::intrusive::normal_link;
+      using boost::intrusive::set;
 
-      /// Character-by-character iterator
-      ///
-      /// This technically violates the random access iterator concept
-      /// since seeking is not constant time. But in the usual case
-      /// it's a lot closer to constant than it is to linear and we're
-      /// better off treating it as random access.
-      class iterator : public std::iterator<
-	std::random_access_iterator_tag, char> {
+      class indexed_buffer : public temporary_buffer<char>,
+			     public set_base_hook<link_mode<normal_link>> {
       public:
-	iterator() noexcept
-	  : v(nullptr), bi(nullptr) { };
-	iterator(not_null<buffvec*> _v, typename buffvec::iterator _vi,
-		 pointer _bi, size_type _o) noexcept
-	  : v(_v), vi(_vi), bi(_bi), o(_o) {
-	  Requres(vi != v->end() || bi == nullptr);
+	indexed_buffer(temporary_buffer<char>&& b, Offset o)
+	  : temporary_buffer<char>(std::move(b)), offset(o) {}
+	const Offset offset;
+      };
+      bool operator<(const indexed_buffer& l, const indexed_buffer& r) {
+	return l.offset < r.offset;
+      }
+      bool operator<(const Offset l, const indexed_buffer& r) {
+	return l < r.offset;
+      }
+      bool operator<(const indexed_buffer& l, const Offset r) {
+	return l.offset < r;
+      }
+
+      struct hole {
+	const Range r;
+      };
+      using hole_or_span = boost::variant<hole, GSL::string_span>;
+
+      /// Data being read or written in to the Store
+      ///
+      /// Represent a set of buffers and their offsets.
+      struct iovec {
+      private:
+	using buffset = set<indexed_buf>;
+      public:
+	using member_type = char;
+	using size_type = std::size_t;
+	using difference_type = std::ptrdiff_t;
+	using reference = member_type&;
+	using const_reference = const member_type&;
+	using pointer = member_type*;
+	using const_pointer = const member_type*;
+
+	/// Character-by-character iterator
+	///
+	/// This technically violates the random access iterator
+	/// concept since seeking is not constant time. However, It's
+	/// a lot closer to constant than it is to linear and we're
+	/// better off treating it as random access.
+	///
+	/// Any iterator where vi == v.end() is an end iterator.
+	class const_iterator : public std::iterator<
+	  std::random_access_iterator_tag, const char> {
+	  Offset offset() const {
+	    if (si == s.end()) {
+	      auto ti = (si - 1);
+	      return ti->ofset + ti->size();
+	    } else {
+	      return si->offset + o;
+	    }
+	  }
+	  bool hole() const {
+	    return o >= si->size();
+	  }
+	  void seek(Offset i) {
+	    si = s.lower_bound(i);
+
+	    if (si->offset = i || si == s.begin()) {
+	      o = 0;
+	      return *this;
+	    }
+
+	    --si;
+	    o = (i - si->offset);
+
+	  }
+	public:
+	  const_iterator() noexcept
+	    : s(nullptr), o(0) { };
+	  const_iterator(const not_null<buffset*> _s,
+			 typename buffset::iterator _bi,
+			 size_t _o) noexcept : s(_s), si(_si), o(_o) { }
+
+	  // Incr/decr
+	  const_iterator operator ++(int) noexcept {
+	    ++o;
+	    auto ti = si + 1;
+	    if (o >= si->size() && (ti == s.end() || o == ti.offset)) {
+	      ++si;
+	      o = 0;
+	    }
+	    return *this;
+	  }
+	  const_iterator operator ++() noexcept {
+	    auto i = *this;
+	    ++(*this);
+	    return i;
+	  }
+	  const_iterator operator --(int) noexcept {
+	    if (si == s.end()) {
+	      --si;
+	      o = si->size() - 1;
+	    } else if (o == 0) {
+	      o = si->offset - 1;
+	      --si;
+	      o -= si.offset;
+	    } else {
+	      --o;
+	    }
+	    return *this;
+	  }
+	  const_iterator operator --() noexcept {
+	    auto i = *this;
+	    --(*this);
+	    return i;
+	  }
+
+	  // Seek
+	  const_iterator operator+=(const difference_type n) noexcept {
+	    if (n < 0)
+	      return *this -= (-n);
+
+	    if (o + n < si->size()) {
+	      o += n;
+	      return *this;
+	    }
+
+	    seek(offset() + n);
+	    return *this;
+	  }
+	  const_iterator operator +(difference_type n) const noexcept {
+	    auto t(*this);
+	    return t += n;
+	  }
+
+	  const_iterator operator -=(difference_type n) noexcept {
+	    if (n < 0)
+	      return *this += (-n);
+
+	    if (si != s.end() && n <= o) {
+	      o -= n;
+	      return *this;
+	    }
+
+	    if (offset() - n < 0) {
+	      o = 0;
+	      si == s->begin();
+	    } else {
+	      seek(offset() - n);
+	    }
+	    return *this;
+	  }
+	  const_iterator operator -(difference_type n) const noexcept {
+	    iterator t(*this);
+
+	    return t -= n;
+	  }
+
+	  // Distance
+	  difference_type operator -(const const_iterator& i) const noexcept {
+	    return i->offset() - offset();
+	  }
+
+	  // Dereference
+	  value_type operator *() const noexcept {
+	    return (*si)[o];
+	  }
+	  value_type operator [](difference_type n) const noexcept {
+	    auto t(*this);
+
+	    return *(t + n);
+	  }
+
+	  // Comparison
+	  bool operator ==(const const_iterator& rhs) const noexcept {
+	    return si == rhs.si && (si == s->end() || o == rhs.o);
+	  }
+	  bool operator !=(const const_iterator& rhs) const noexcept {
+	    return !(*this == rhs);
+	  }
+	  bool operator <(const const_iterator& rhs) const noexcept {
+	    return si < rhs.si || (si == rhs.si && si != s->end() &&
+				   o < rhs.o);
+	  }
+	  bool operator <=(const const_iterator& rhs) const noexcept {
+	    return (*this < rhs) || (*this == rhs);
+	  }
+	  bool operator >=(const const_iterator& rhs) const noexcept {
+	    return !(*this < rhs);
+	  }
+	  bool operator >(const iterator& rhs) const noexcept {
+	    return !(*this <= rhs);
+	  }
+
+	private:
+	  const buffset const* s;
+	  typename buffset::const_iterator si;
+	  Offset o;
 	};
-	iterator operator++() noexcept {
-	  iterator i = *this;
-	  ++bi;
-	  ++o;
-	  if (bi == vi->end()) {
-	    ++vi;
-	    bi = (vi != v.end()) ? bi == vi->begin() : nullptr;
-	  }
-	  Ensures(vi != v->end() || bi == nullptr);
-	  return i;
-	}
-	iterator operator++(int) noexcept {
-	  ++bi;
-	  ++o;
-	  if (bi == vi->end()) {
-	    ++vi;
-	    bi = (vi != v.end()) ? bi == vi->begin() : nullptr;
-	  }
-	  Ensures(vi != v->end() || bi == nullptr);
-	  return *this;
+
+	using iterator = const_iterator;
+	using reverse_iterator = std::reverse_iterator<iterator>;
+	using const_reverse_iterator = std::reverse_iterator<const_iterator>;
+
+
+	const_iterator begin() const {
+	  return const_iterator(data, data.begin(), 0);
 	}
 
-	iterator operator+=(difference_type n) noexcept {
-	  if (n < 0)
-	    return *this -= (-n);
-	  o += n;
-	  while (n > 0 && vi != v.end()) {
-	    if (vi->end() - bi < n) {
-	      bi += n;
-	      n = 0;
+	const_iterator cbegin() const {
+	  return const_iterator(data, data.begin(), 0);
+	}
+
+	const_reverse_iterator rbegin() const {
+	  return const_reverse_iterator(begin());
+	}
+	const_iterator crbegin() const {
+	  return const_reverse_iterator(cbegin());
+	}
+
+	const_iterator end() const {
+	  return iterator(data, data.end(), 0);
+	}
+	const_iterator cend() const {
+	  return iterator(data, data.end(), 0);
+	}
+
+	const_reverse_iterator rend() const {
+	  return const_reverse_iterator(end);
+	}
+	const_reverse_iterator crend() const {
+	  return const_reverse_iterator(cend);
+	}
+
+	/// Iterate over contiguous stripes
+	///
+	/// This class takes over the calculations for striping
+	/// data. When dereferenced, each iterator yields a string_span
+	/// giving a contiguous buffer that is either all or part of a
+	/// given chunk.
+	class striperator : public std::iterator<
+	  std::forward_iterator_tag, hole_or_span> {
+	public:
+	  striperator() noexcept
+	    : v(nullptr) { };
+
+	  Offset offset() const {
+	    if (si == s.end()) {
+	      auto ti = (si - 1);
+	      return ti->ofset + ti->size();
 	    } else {
-	      n -= (vi->end() - bi);
-	      ++vi;
-	      bi = (vi == v.end() ? nullptr : vi->begin());
+	      return si->offset + o;
 	    }
 	  }
-	  Ensures(vi != v->end() || bi == nullptr);
-	  return *this;
-	}
-
-	iterator operator--() noexcept {
-	  iterator i = *this;
-	  if (vi == v.end() ||
-	      bi == vi->begin()) {
-	    --vi;
-	    bi = --(vi->end());
-	  } else {
-	    --bi;
+	  bool hole() const {
+	    return o >= si->size();
 	  }
-	  --o;
-	  Ensures(vi != v->end() || bi == nullptr);
-	  return i;
-	}
-	iterator operator +(difference_type n) const noexcept {
-	  iterator t(*this);
-	  return t += n;
-	}
+	  void seek(Offset i) {
+	    si = s.lower_bound(i);
 
-	iterator operator --(int) noexcept {
-	  if (vi == v.end() ||
-	      bi == vi->begin()) {
-	    --vi;
-	    bi = --(vi->end());
-	  } else {
-	    --bi;
-	  }
-	  --o;
-	  Ensures(vi != v->end() || bi == nullptr);
-	  return *this;
-	}
-	iterator operator -=(difference_type n) noexcept {
-	  if (n < 0)
-	    return *this += (-n);
-	  o -= n;
-	  while (n > 0 && vi != v.begin()) {
-	    if (vi == v->end) {
-	      --vi;
-	      bi = vi->end();
+	    if (si->offset = i || si == s.begin()) {
+	      o = 0;
+	      return *this;
 	    }
-	    if (bi - vi->begin() < n) {
-	      bi -= n;
-	      n = 0;
+
+	    --si;
+	    o = (i - si->offset);
+
+	  }
+	public:
+	  const_iterator() noexcept
+	    : s(nullptr), o(0) { };
+	  const_iterator(const not_null<buffset*> _s,
+			 typename buffset::iterator _bi,
+			 size_t _o) noexcept : s(_s), si(_si), o(_o) { }
+
+	  // Incr/decr
+	  const_iterator operator ++(int) noexcept {
+	    ++o;
+	    auto ti = si + 1;
+	    if (o >= si->size() && (ti == s.end() || o == ti.offset)) {
+	      ++si;
+	      o = 0;
+	    }
+	    return *this;
+	  }
+	  const_iterator operator ++() noexcept {
+	    auto i = *this;
+	    ++(*this);
+	    return i;
+	  }
+	  const_iterator operator --(int) noexcept {
+	    if (si == s.end()) {
+	      --si;
+	      o = si->size() - 1;
+	    } else if (o == 0) {
+	      o = si->offset - 1;
+	      --si;
+	      o -= si.offset;
 	    } else {
-	      n -= (bi - vi->begin());
-	      --vi;
-	      bi = vi->end();
+	      --o;
 	    }
+	    return *this;
 	  }
-	  Ensures(vi != v->end() || bi == nullptr);
-	  return *this;
-	}
+	  const_iterator operator --() noexcept {
+	    auto i = *this;
+	    --(*this);
+	    return i;
+	  }
 
-	iterator operator -(difference_type n) const noexcept {
-	  iterator t(*this);
+	  // Seek
+	  const_iterator operator+=(const difference_type n) noexcept {
+	    if (n < 0)
+	      return *this -= (-n);
 
-	  return t += -n;
-	}
+	    if (o + n < si->size()) {
+	      o += n;
+	      return *this;
+	    }
 
-	difference_type operator -(const iterator& i) const noexcept {
-	  return i->o - o;
-	}
+	    seek(offset() + n);
+	    return *this;
+	  }
+	  const_iterator operator +(difference_type n) const noexcept {
+	    auto t(*this);
+	    return t += n;
+	  }
 
-	pointer operator ->() const noexcept {
-	  return *bi;
-	}
-	reference operator *() const noexcept {
-	  return *bi;
-	}
-	reference operator [](difference_type n) noexcept {
-	  iterator t(*this);
+	  const_iterator operator -=(difference_type n) noexcept {
+	    if (n < 0)
+	      return *this += (-n);
 
-	  return *(t + n);
-	}
+	    if (si != s.end() && n <= o) {
+	      o -= n;
+	      return *this;
+	    }
 
-	bool operator ==(const iterator& rhs) const noexcept {
-	  Requres((vi != v->end() || bi == nullptr) &&
-		  (rhs.vi != v->end() || rhs.bi == nullptr) &&
-		  v == rhs->v);
+	    if (offset() - n < 0) {
+	      o = 0;
+	      si == s->begin();
+	    } else {
+	      seek(offset() - n);
+	    }
+	    return *this;
+	  }
+	  const_iterator operator -(difference_type n) const noexcept {
+	    iterator t(*this);
 
-	  return (vi == rhs.vi && bi == rhs.vi);
-	}
-	bool operator !=(const iterator& rhs) const noexcept {
-	  return !(*this == rhs);
-	}
-	bool operator <(const iterator& rhs) const noexcept {
-	  Requres((vi != v->end() || bi == nullptr) &&
-		  (rhs.vi != v->end() || rhs.bi == nullptr) &&
-		  v == rhs->v);
-	  return vi <= rhs.vi && bi < rhs.bi;
-	}
-	bool operator <=(const iterator& rhs) const noexcept {
-	  Requres((vi != v->end() || bi == nullptr) &&
-		  (rhs.vi != v->end() || rhs.bi == nullptr) &&
-		  v == rhs->v);
-	  return vi <= rhs.vi && bi <= rhs.bi;
-	}
-	bool operator >=(const iterator& rhs) const noexcept {
-	  Requres((vi != v->end() || bi == nullptr) &&
-		  (rhs.vi != v->end() || rhs.bi == nullptr) &&
-		  v == rhs->v);
-	  return vi >= rhs.vi && bi >= rhs.bi;
-	}
-	bool operator >(const iterator& rhs) const noexcept {
-	  Requres((vi != v->end() || bi == nullptr) &&
-		  (rhs.vi != v->end() || rhs.bi == nullptr) &&
-		  v == rhs->v);
-	  return vi > rhs.vi && bi >= rhs.bi;
-	}
+	    return t -= n;
+	  }
 
-      private:
-	buffvec const* v;
-	typename buffvec::iterator vi;
-	pointer bi;
-	size_type o;
-      };
+	  // Distance
+	  difference_type operator -(const const_iterator& i) const noexcept {
+	    return i->offset() - offset();
+	  }
 
-      /// Character-by-character iterator, const version
-      class const_iterator : public std::iterator<
-	std::random_access_iterator_tag, char> {
-      public:
-	const_iterator() noexcept
-	  : v(nullptr), bi(nullptr) { };
-	const_iterator(not_null<const buffvec*> _v,
-		       typename buffvec::const_iterator _vi,
-		       const_pointer _bi, size_type _o) noexcept
-	  : v(_v), vi(_vi), bi(_bi), o(_o) {
-	  Requres(vi != v->end() || bi == nullptr);
+	  // Dereference
+	  value_type operator *() const noexcept {
+	    return (*si)[o];
+	  }
+	  value_type operator [](difference_type n) const noexcept {
+	    auto t(*this);
+
+	    return *(t + n);
+	  }
+
+	  // Comparison
+	  bool operator ==(const const_iterator& rhs) const noexcept {
+	    return si == rhs.si && (si == s->end() || o == rhs.o);
+	  }
+	  bool operator !=(const const_iterator& rhs) const noexcept {
+	    return !(*this == rhs);
+	  }
+	  bool operator <(const const_iterator& rhs) const noexcept {
+	    return si < rhs.si || (si == rhs.si && si != s->end() &&
+				   o < rhs.o);
+	  }
+	  bool operator <=(const const_iterator& rhs) const noexcept {
+	    return (*this < rhs) || (*this == rhs);
+	  }
+	  bool operator >=(const const_iterator& rhs) const noexcept {
+	    return !(*this < rhs);
+	  }
+	  bool operator >(const iterator& rhs) const noexcept {
+	    return !(*this <= rhs);
+	  }
+
+	private:
+	  const buffset const* s;
+	  typename buffset::const_iterator si;
+	  Offset o;
+	  const std::size_t stride_count;
+	  const std::size_t this_stride;
+	  const Length stride_width;
 	};
-	const_iterator operator++() noexcept {
-	  const_iterator i = *this;
-	  ++bi;
-	  ++o;
-	  if (bi == vi->end()) {
-	    ++vi;
-	    bi = (vi != v.end()) ? bi == vi->begin() : nullptr;
-	  }
-	  Ensures(vi != v->end() || bi == nullptr);
-	  return i;
-	}
-	const_iterator operator++(int) noexcept {
-	  ++bi;
-	  ++o;
-	  if (bi == vi->end()) {
-	    ++vi;
-	    bi = (vi != v.end()) ? bi == vi->begin() : nullptr;
-	  }
-	  Ensures(vi != v->end() || bi == nullptr);
-	  return *this;
-	}
 
-	const_iterator operator+=(difference_type n) noexcept {
-	  if (n < 0)
-	    return *this -= (-n);
-	  o += n;
-	  while (n > 0 && vi != v.end()) {
-	    if (vi->end() - bi < n) {
-	      bi += n;
-	      n = 0;
-	    } else {
-	      n -= (vi->end() - bi);
-	      ++vi;
-	      bi = (vi == v.end() ? nullptr : vi->begin());
-	    }
-	  }
-	  Ensures(vi != v->end() || bi == nullptr);
-	  return *this;
-	}
-
-	const_iterator operator--() noexcept {
-	  const_iterator i = *this;
-	  if (vi == v.end() ||
-	      bi == vi->begin()) {
-	    --vi;
-	    bi = --(vi->end());
-	  } else {
-	    --bi;
-	  }
-	  --o;
-	  Ensures(vi != v->end() || bi == nullptr);
-	  return i;
-	}
-	const_iterator operator +(difference_type n) const noexcept {
-	  const_iterator t(*this);
-	  return t += n;
-	}
-
-	const_iterator operator --(int) noexcept {
-	  if (vi == v.end() ||
-	      bi == vi->begin()) {
-	    --vi;
-	    bi = --(vi->end());
-	  } else {
-	    --bi;
-	  }
-	  --o;
-	  Ensures(vi != v->end() || bi == nullptr);
-	  return *this;
-	}
-	const_iterator operator -=(difference_type n) noexcept {
-	  if (n < 0)
-	    return *this += (-n);
-	  o -= n;
-	  while (n > 0 && vi != v.begin()) {
-	    if (vi == v->end) {
-	      --vi;
-	      bi = vi->end();
-	    }
-	    if (bi - vi->begin() < n) {
-	      bi -= n;
-	      n = 0;
-	    } else {
-	      n -= (bi - vi->begin());
-	      --vi;
-	      bi = vi->end();
-	    }
-	  }
-	  Ensures(vi != v->end() || bi == nullptr);
-	  return *this;
-	}
-
-	const_iterator operator -(difference_type n) const noexcept {
-	  const_iterator t(*this);
-
-	  return t += -n;
-	}
-
-	difference_type operator -(const const_iterator& i) const noexcept {
-	  return i->o - o;
-	}
-
-	const_reference operator *() const noexcept {
-	  return *bi;
-	}
-	inline const_pointer operator ->() const noexcept {
-	  return *bi;
-	}
-
-	const_reference operator [](difference_type n) noexcept {
-	  const_iterator t(*this);
-
-	  return *(t + n);
-	}
-
-	bool operator ==(const const_iterator& rhs) const noexcept {
-	  Requres((vi != v->end() || bi == nullptr) &&
-		  (rhs.vi != v->end() || rhs.bi == nullptr) &&
-		  v == rhs->v);
-
-	  return (vi == rhs.vi && bi == rhs.vi);
-	}
-	bool operator !=(const const_iterator& rhs) const noexcept {
-	  return !(*this == rhs);
-	}
-	bool operator <(const const_iterator& rhs) const noexcept {
-	  Requres((vi != v->end() || bi == nullptr) &&
-		  (rhs.vi != v->end() || rhs.bi == nullptr) &&
-		  v == rhs->v);
-	  return vi <= rhs.vi && bi < rhs.bi;
-	}
-	bool operator <=(const const_iterator& rhs) const noexcept {
-	  Requres((vi != v->end() || bi == nullptr) &&
-		  (rhs.vi != v->end() || rhs.bi == nullptr) &&
-		  v == rhs->v);
-	  return vi <= rhs.vi && bi <= rhs.bi;
-	}
-	bool operator >=(const const_iterator& rhs) const noexcept {
-	  Requres((vi != v->end() || bi == nullptr) &&
-		  (rhs.vi != v->end() || rhs.bi == nullptr) &&
-		  v == rhs->v);
-	  return vi >= rhs.vi && bi >= rhs.bi;
-	}
-	bool operator >(const const_iterator& rhs) const noexcept {
-	  Requres((vi != v->end() || bi == nullptr) &&
-		  (rhs.vi != v->end() || rhs.bi == nullptr) &&
-		  v == rhs->v);
-	  return vi > rhs.vi && bi >= rhs.bi;
-	}
-
-      private:
-	const buffvec* const v;
-	typename buffvec::const_iterator vi;
-	const_pointer bi;
-	size_type o;
+	buffset data;
       };
-
-      using reverse_iterator = std::reverse_iterator<iterator>;
-      using const_reverse_iterator = std::reverse_iterator<const_iterator>;
-
-      /// Continguous buffer iterator
-      ///
-      /// Iterate over our buffers.
-      class contig_iterator : public std::iterator<
-	std::bidirectional_iterator_tag, GSL::string_span> {
-      public:
-	contig_iterator() noexcept
-	  : v(nullptr) { };
-	contig_iterator(not_null<buffvec*> _v, buffvec::iterator _vi) noexcept
-	  : v(_v), vi(_vi) {};
-	contig_iterator operator++(int) noexcept {
-	  ++vi;
-	  return *this;
-	}
-
-	iterator operator++() noexcept {
-	  iterator i = *this;
-	  ++vi;
-	  return i;
-	}
-	iterator operator --(int) noexcept {
-	  --vi;
-	  return *this;
-	}
-	iterator operator--() noexcept {
-	  iterator i = *this;
-	  --vi;
-	  return i;
-	}
-
-	pointer operator ->() const noexcept {
-	  return GSL::string_span(bi->get_write(), bi->length());
-	}
-	reference operator *() const noexcept {
-	  return GSL::string_span(bi->get_write(), bi->length());
-	}
-
-	bool operator ==(const iterator& rhs) const noexcept {
-	  Requres(v == rhs->v);
-	  return vi == rhs.vi;
-	}
-	bool operator !=(const iterator& rhs) const noexcept {
-	  Requres(v == rhs->v);
-	  return vi != rhs.vi;
-	}
-	bool operator <(const iterator& rhs) const noexcept {
-	  Requres(v == rhs->v);
-	  return vi < rhs.vi;
-	}
-	bool operator <=(const iterator& rhs) const noexcept {
-	  Requres(v == rhs->v);
-	  return vi <= rhs.vi;
-	}
-	bool operator >=(const iterator& rhs) const noexcept {
-	  Requres(v == rhs->v);
-	  return vi >= rhs.vi;
-	}
-	bool operator >(const iterator& rhs) const noexcept {
-	  Requres(v == rhs->v);
-	  return vi > rhs.vi;
-	}
-
-      private:
-	buffvec const* v;
-	typename buffvec::iterator vi;
-      };
-      /// Continguous buffer iterator
-      ///
-      /// Iterate over our buffers.
-      class const_contig_iterator : public std::iterator<
-	std::bidirectional_iterator_tag, const GSL::string_span> {
-      public:
-	contig_iterator() noexcept
-	  : v(nullptr) { };
-	contig_iterator(not_null<buffvec*> _v, buffvec::iterator _vi) noexcept
-	  : v(_v), vi(_vi) {};
-	contig_iterator operator++(int) noexcept {
-	  ++vi;
-	  return *this;
-	}
-
-	iterator operator++() noexcept {
-	  iterator i = *this;
-	  ++vi;
-	  return i;
-	}
-	iterator operator --(int) noexcept {
-	  --vi;
-	  return *this;
-	}
-	iterator operator--() noexcept {
-	  iterator i = *this;
-	  --vi;
-	  return i;
-	}
-
-	const pointer operator ->() const noexcept {
-	  return GSL::string_span(bi->get_write(), bi->length());
-	}
-	value_type operator *() const noexcept {
-	  return GSL::string_span(bi->get_write(), bi->length());
-	}
-
-	bool operator ==(const iterator& rhs) const noexcept {
-	  Requres(v == rhs->v);
-	  return vi == rhs.vi;
-	}
-	bool operator !=(const iterator& rhs) const noexcept {
-	  Requres(v == rhs->v);
-	  return vi != rhs.vi;
-	}
-	bool operator <(const iterator& rhs) const noexcept {
-	  Requres(v == rhs->v);
-	  return vi < rhs.vi;
-	}
-	bool operator <=(const iterator& rhs) const noexcept {
-	  Requres(v == rhs->v);
-	  return vi <= rhs.vi;
-	}
-	bool operator >=(const iterator& rhs) const noexcept {
-	  Requres(v == rhs->v);
-	  return vi >= rhs.vi;
-	}
-	bool operator >(const iterator& rhs) const noexcept {
-	  Requres(v == rhs->v);
-	  return vi > rhs.vi;
-	}
-
-      private:
-	const buffvec const* v;
-	typename buffvec::const_iterator vi;
-      };
-
-      using reverse_contig_iterator = std::reverse_iterator<contig_iterator>;
-      using reverse_const_reverse_iterator = std::reverse_iterator<
-	const_contig_iterator>;
-
-      uint64_t offset;
-      std::vector<temporary_buffer<char>, Allocator> data;
-    };
-
-    /// Data being read from the store
-    using outvec = std::vector<temporary_buffer<char>>;
+    } // namespace _
+    using _::iovec;
   } // namespace store
 } // namespace crimson

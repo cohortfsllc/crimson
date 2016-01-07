@@ -34,6 +34,7 @@
 #include <cassert>
 #include <memory>
 #include <utility>
+#include <system_error>
 
 #include <boost/intrusive_ptr.hpp>
 #include <boost/intrusive/set.hpp>
@@ -51,6 +52,57 @@
 namespace crimson {
 
   /// Storage interface
+  namespace store {
+    /// Error codes for the Store interface
+    enum class errc {
+      no_such_collection,
+      no_such_object,
+      collection_exists,
+      object_exists,
+      operation_not_supported,
+      invalid_handle
+    };
+
+    class error_category : public std::error_category {
+      virtual const char* name() const noexcept;
+      virtual std::string message(int ev) const;
+      virtual std::error_condition default_error_condition(
+	int ev) const noexcept {
+	switch (static_cast<errc>(ev)) {
+	case errc::no_such_collection:
+	  return std::errc::no_such_file_or_directory;
+	case errc::no_such_object:
+	  return std::errc::no_such_file_or_directory;
+	case errc::collection_exists:
+	  return std::errc::file_exists;
+	case errc::object_exists:
+	  return std::errc::file_exists;
+	case errc::operation_not_supported:
+	  return std::errc::operation_not_supported;
+	default:
+	  return std::error_condition(ev, *this);
+	}
+      }
+    };
+
+    const std::error_category& error_category();
+
+    static inline std::error_condition make_error_condition(errc e) {
+      return std::error_condition(static_cast<int>(e), error_category());
+    }
+
+    static inline std::error_code make_error_code(errc e) {
+      return std::error_code(static_cast<int>(e), error_category());
+    }
+  } // namespace store
+} // namespace crimson
+
+namespace std {
+  template<>
+  struct is_error_code_enum<crimson::store::errc> : public std::true_type {};
+};
+
+namespace crimson {
   namespace store {
     class Collection;
     using CollectionRef = foreign_ptr<boost::intrusive_ptr<Collection>>;
@@ -112,7 +164,7 @@ namespace crimson {
       /// \note Ceph ObjectStore just returns them all at once. Do we
       /// think we'll need cursor-like logic the way we do for
       /// attribute and object enumeration?
-      virtual future<sstring> enumerate_collections() const = 0;
+      virtual future<std::vector<sstring>> enumerate_collections() const = 0;
       /// Commit the entire Store
       ///
       /// All of it. No questions asked. This function acts as a
