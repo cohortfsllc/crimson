@@ -27,6 +27,10 @@
 namespace crimson {
 namespace net {
 
+  using seastar::connected_socket;
+  using seastar::server_socket;
+  using seastar::socket_address;
+
 /// A Connection that reads and writes over a connected_socket.
 class SocketConnection : public Connection {
   connected_socket socket;

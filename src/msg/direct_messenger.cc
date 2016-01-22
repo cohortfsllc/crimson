@@ -20,10 +20,13 @@
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 // 02110-1301 USA
 
-#include "direct_messenger.h"
 #include <capnp/message.h>
 #include <core/reactor.hh>
 
+#include "direct_messenger.h"
+#include "crimson.h"
+
+using namespace crimson;
 using namespace crimson::net;
 
 namespace {

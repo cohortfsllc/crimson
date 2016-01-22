@@ -20,25 +20,38 @@
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 // 02110-1301 USA
 
-/// \file crimson.cc
-/// \brief Main driver for Project Crimson server executable
+/// \file crimson.h
+/// \brief Basic definitions and data types
 ///
 /// \author Adam C. Emerson <aemerson@redhat.com>
 
-#include <iostream>
+#include <core/future.hh>
+#include <core/sharded.hh>
+#include <core/shared_ptr.hh>
+#include <core/sstring.hh>
+#include <core/temporary_buffer.hh>
 
-#include <core/app-template.hh>
-#include <core/reactor.hh>
+namespace crimson {
+  using seastar::future;
+  using seastar::promise;
+  using seastar::make_ready_future;
+  using seastar::make_exception_future;
+  using seastar::do_for_each;
 
-#include "crimson.h"
+  using seastar::shared_ptr;
+  using seastar::make_shared;
+  using seastar::lw_shared_ptr;
+  using seastar::make_lw_shared;
 
-using namespace crimson;
+  using string = seastar::sstring;
+  using temporary_buffer = seastar::temporary_buffer<char>;
 
-int main(int argc, char** argv) {
-  seastar::app_template crimson;
-  crimson.run(argc, argv, [] {
-      std::cout << "It's fun to charter an accountant\n"
-		<< "And sail the wide accountant sea!" << std::endl;
-      return make_ready_future<>();
-    });
+  using seastar::now;
+  using seastar::input_stream;
+  using seastar::output_stream;
+
+  using seastar::unaligned_cast;
+
+  using seastar::engine;
+  using seastar::smp;
 }

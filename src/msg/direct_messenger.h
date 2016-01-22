@@ -31,8 +31,8 @@ namespace net {
 /// A Connection that reads and writes directly to another Connection pointer.
 class DirectConnection : public Connection {
   shared_ptr<DirectConnection> other; //< other endpoint of the connection
-  circular_buffer<promise<MessageReaderPtr>> reads_waiting_for_message;
-  circular_buffer<promise<MessageReaderPtr>> messages_waiting_for_read;
+  seastar::circular_buffer<promise<MessageReaderPtr>> reads_waiting_for_message;
+  seastar::circular_buffer<promise<MessageReaderPtr>> messages_waiting_for_read;
 
   /// connect to another endpoint
   void connect(shared_ptr<DirectConnection> conn) { other = conn; }

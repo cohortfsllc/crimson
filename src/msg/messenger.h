@@ -25,6 +25,8 @@
 #include <core/future.hh>
 #include <core/shared_ptr.hh>
 
+#include "crimson.h"
+
 namespace capnp {
 class MessageReader;
 class MessageBuilder;

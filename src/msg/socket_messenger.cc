@@ -33,7 +33,7 @@ namespace {
 
 /// Buffer segments are represented by seastar's temporary_buffer, which
 /// provides ownership semantics that we use to control the buffer lifecycle
-using segment_t = temporary_buffer<char>;
+using segment_t = temporary_buffer;
 using segment_array_t = std::vector<segment_t>;
 
 /// 64-bit words are the unit of capnp buffer segments
@@ -110,9 +110,9 @@ future<uint32_t> read_segment_count(input_stream<char>& in)
   return in.read_exactly(4).then(
     [] (auto data) {
       if (data.size() != 4)
-        throw ProtocolError("failed to read segment count");
+	throw ProtocolError("failed to read segment count");
       auto p = unaligned_cast<uint32_t>(data.get());
-      return ::net::ntoh(*p) + 1;
+      return seastar::net::ntoh(*p) + 1;
     });
 }
 
@@ -137,10 +137,10 @@ class SegmentConsumer {
   /// Transform sizes to host byte order and calculate the total message size
   static uint32_t total_bytes(segment_t& sizes) {
     return std::accumulate(unaligned_cast<uint32_t>(sizes.begin()),
-                           unaligned_cast<uint32_t>(sizes.end()), 0,
-                           [] (auto sum, auto next) {
-                             return sum + ::net::ntoh(next);
-                           });
+			   unaligned_cast<uint32_t>(sizes.end()), 0,
+			   [] (auto sum, auto next) {
+			     return sum + seastar::net::ntoh(next);
+			   });
   }
 
  public:
@@ -151,7 +151,7 @@ class SegmentConsumer {
   segment_array_t take_segments() { return std::move(segments); }
 
   using unconsumed_remainder = typename input_stream<CharType>::unconsumed_remainder;
-  using tmp_buf = temporary_buffer<CharType>;
+  using tmp_buf = seastar::temporary_buffer<CharType>;
 
   future<unconsumed_remainder> operator()(tmp_buf data) {
     // return an empty buffer to declare that we're done
@@ -183,7 +183,7 @@ class SegmentConsumer {
 
 future<> write_segment_count(uint32_t count, output_stream<char>& out)
 {
-  auto data = ::net::hton(count - 1);
+  auto data = seastar::net::hton(count - 1);
   return out.write(reinterpret_cast<const char*>(&data), 4);
 }
 
@@ -193,7 +193,7 @@ future<> write_segment_sizes(Iter begin, Iter end, output_stream<char>& out)
   return do_for_each(begin, end,
     [&out] (auto segment) {
       uint32_t size = segment.asBytes().size(); // size in bytes
-      uint32_t data = ::net::hton(size);
+      uint32_t data = seastar::net::hton(size);
       return out.write(reinterpret_cast<const char*>(&data), 4);
     });
 }
@@ -208,7 +208,7 @@ future<> write_frame(kj_segment_array_t segments, output_stream<char>& out)
         [&out] (auto segment) {
           auto s = segment.asBytes();
           return out.write(reinterpret_cast<const char*>(s.begin()), s.size());
-        });
+			 });
     });
 }
 
@@ -245,7 +245,7 @@ future<> SocketConnection::close()
 
 static auto make_listen(socket_address address)
 {
-  listen_options lo;
+  seastar::listen_options lo;
   lo.reuse_address = true;
   return engine().listen(address, lo);
 }
