@@ -36,37 +36,31 @@
 #include <core/sharded.hh>
 #include <core/slab.hh>
 
+#include "Iovec.h"
 #include "Store.h"
 #include "Collection.h"
 
 namespace crimson {
-
   /// Storage interface
   namespace store {
+    /// Attribute namespace specifier
+    enum class attr_ns { xattr, omap, END };
+
+    class AttrCursor;
+    using AttrCursorRef = foreign_ptr<boost::intrusive_ptr<AttrCursor>>;
+
     /// A handle for object storage operations
     ///
     /// Used to represent existing objects in the Store.
     class Object {
-    private:
-      virtual void ref() = 0;
-      virtual void unref() = 0;
-      friend inline void intrusive_ptr_add_ref(Object* o) {
-	o->ref();
-      }
-      friend inline void intrusive_ptr_release(Object* o) {
-	o->unref();
-      }
-      ///@}
-
     protected:
       CollectionRef coll;
       const sstring oid;
 
     public:
-      explicit Object(uint32_t _slab_page_index, CollectionRef _coll,
-		      sstring _oid)
-	: slab_page_index(_slab_page_index), coll(std::move(_c)),
-	  oid(std::move(_oid)) {}
+      explicit Object(CollectionRef&& _coll,
+		      sstring&& _oid)
+	: coll(std::move(_coll)), oid(std::move(_oid)) {}
       virtual ~Object() = default;
 
       const sstring& get_oid() const {
@@ -89,12 +83,13 @@ namespace crimson {
       /// an object return 0 rather than error. Do we want to retain
       /// that functionality?
       ///
-      /// @param[in] range Range to read
+      /// \param[in] range Range to read
       ///
-      /// @return Data read from object
+      /// \return Data read from object
       ///
-      /// \note For sparse objects, holes are read as 0s.
-      virtual future<outvec> read(const Range& r) const = 0;
+      /// \throws store::errc::out_of_range if attempt is made to read after
+      ///         the end of an object.
+      virtual future<IovecRef> read(const Range& r) const = 0;
       /// Write data to an offset within an object
       ///
       /// If the object is too small, it is expanded as needed.  It is
@@ -104,7 +99,7 @@ namespace crimson {
       /// old end of the object and the newly provided data. More
       /// sophisticated implementations of Store will omit the
       /// untouched data and store it as a "hole" in the file.
-      virtual future<> write(invec data) = 0;
+      virtual future<> write(IovecRef data) = 0;
       /// Zero out the indicated byte range within an object.
       ///
       /// Some Store instances may optimize this to release the
@@ -113,7 +108,7 @@ namespace crimson {
       /// @param[in] range Range to zero
       ///
       /// \see hole_punch
-      virtual future<> zero{Range range) = 0;
+      virtual future<> zero(const Range& range) = 0;
       /// Punch a hole in the object of the given dimension
       ///
       /// If the store cannot punch holes or cannot punch holes of the
@@ -122,7 +117,10 @@ namespace crimson {
       /// @param[in] range Range in which to punch the hole
       ///
       /// \see zero, get_extents
-      virtual future<> hole_punch(Range range) = 0;
+      ///
+      /// \throws store::errc::out_of_range if attempt is made to punch hole
+      ///         after the end of an object.
+      virtual future<> hole_punch(const Range range) = 0;
       /// Truncate an object.
       ///
       /// \note This will only make objects shorter, you cannot
@@ -131,7 +129,7 @@ namespace crimson {
       /// \param[in] length To which to truncate the object
       ///
       /// \see hole_punch
-      virtual future<> truncate(Length length) = 0;
+      virtual future<> truncate(const Length length) = 0;
       /// Remove an object
       ///
       /// All portions of the object are removed. This should almost
@@ -165,7 +163,7 @@ namespace crimson {
       /// \param[in] attr Attribute key
       /// \param[in] val  Attribute value
       virtual future<> setattr(attr_ns ns, sstring attr,
-			       temporary_buffer<char>> val) = 0;
+			       temporary_buffer<char> val) = 0;
       /// Sets attributes
       ///
       /// \param[in] ns       Attribute namespace
@@ -201,16 +199,16 @@ namespace crimson {
 				    AttrCursorRef lb,
 				    AttrCursorRef ub) = 0;
       /// Enumerate attributes (just the names)
-      virtual future<std::vector<sstring>, AttrCursorRef> enumerate_attrs(
+      virtual future<std::vector<sstring>, AttrCursorRef> enumerate_attr_keys(
 	attr_ns ns,
 	boost::optional<AttrCursorRef> cursor,
 	size_t to_return) const = 0;
       /// Enumerate attributes (key/value)
-      virtual future<std::vector<std::pair<sstring, temporary_buffer<char>>,
-				 AttrCursorRef> enumerate_attrs(
-	attr_ns ns,
-	boost::optional<AttrCursorRef> cursor,
-	size_t to_return) const = 0;
+      virtual future<std::vector<std::pair<sstring, temporary_buffer<char>>>,
+		     AttrCursorRef> enumerate_attr_kvs(
+		       attr_ns ns,
+		       boost::optional<AttrCursorRef> cursor,
+		       size_t to_return) const = 0;
 
       /// Get cursor for attribute key
       ///
@@ -220,7 +218,8 @@ namespace crimson {
       ///
       /// \note Not supported on stores without a well-defined
       /// enumeration order for attributes.
-      virtual future<AttrCursorRef> attr_cursor(attr_ns ns, string attr) const;
+      virtual future<AttrCursorRef> attr_cursor(attr_ns ns,
+						sstring attr) const;
 
       /// Clone this object into another object
       ///
@@ -235,7 +234,7 @@ namespace crimson {
       /// \note Objects must be in the same collection.
       ///
       /// \see clone_range
-      virtual future<> clone{Object& dest_obj) const = 0;
+      virtual future<> clone(Object& dest_obj) const = 0;
       /// Clone a byte range from one object to another
       ///
       /// This only affects the data portion of the destination object.
@@ -296,16 +295,14 @@ namespace crimson {
       /// \param[in] dest_oid  OID it should have there
       ///
       /// \see split_collection
-      virtual future<>(Collection& dest_coll,
-		       const sstring& dest_oid) = 0;
+      virtual future<>move_to_collection(Collection& dest_coll,
+					 const sstring& dest_oid) = 0;
       /// Commit all outstanding modifications on this object
       ///
       /// This function acts as a barrier. It will complete when all
       /// outstanding operations are complete and written to stable storage.
       virtual future<> commit() = 0;
     }; /* Object */
-
-    using ObjectRef = foreign_ptr<boost::intrusive_ptr<Object>>;
   } // namespace store
 } // namespace crimson
 

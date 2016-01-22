@@ -43,13 +43,15 @@
 
 #include <core/future.hh>
 #include <core/sharded.hh>
-#include <core/sstring.hh>
 #include <core/temporary_buffer.hh>
 
 #include "GSL/include/gsl.h"
 #include "cxx_function/cxx_function.hpp"
 
+#include "common/basics.h"
+
 namespace crimson {
+
 
   /// Storage interface
   namespace store {
@@ -57,10 +59,12 @@ namespace crimson {
     enum class errc {
       no_such_collection,
       no_such_object,
+      no_such_attribute_key,
       collection_exists,
       object_exists,
       operation_not_supported,
-      invalid_handle
+      invalid_handle,
+      out_of_range
     };
 
     class error_category : public std::error_category {
@@ -79,6 +83,8 @@ namespace crimson {
 	  return std::errc::file_exists;
 	case errc::operation_not_supported:
 	  return std::errc::operation_not_supported;
+	case errc::out_of_range:
+	  return std::errc::invalid_argument;
 	default:
 	  return std::error_condition(ev, *this);
 	}
@@ -105,7 +111,8 @@ namespace std {
 namespace crimson {
   namespace store {
     class Collection;
-    using CollectionRef = foreign_ptr<boost::intrusive_ptr<Collection>>;
+    using CollectionRef = seastar::foreign_ptr<
+      boost::intrusive_ptr<Collection>>;
 
     using Offset = uint64_t;
     using Length = uint64_t;
@@ -143,7 +150,7 @@ namespace crimson {
       /// Collections exist on multiple CPUs, but one CPU has the tree
       /// where the collection name can be looked up and which drives
       /// initialization.
-      virtual unsigned get_cpu(const sstring& cid) const noexcept = 0;
+      virtual unsigned get_cpu(const string& cid) const noexcept = 0;
 
       /**
        * Set and get internal fsid for this instance. No external data
@@ -158,13 +165,13 @@ namespace crimson {
       /// to the call.
       ///
       /// \param[in] cid Collection ID
-      virtual future<CollectionRef>create_collection(sstring cid) = 0;
+      virtual future<CollectionRef>create_collection(string cid) = 0;
       /// Enumerate all collections in this store
       ///
       /// \note Ceph ObjectStore just returns them all at once. Do we
       /// think we'll need cursor-like logic the way we do for
       /// attribute and object enumeration?
-      virtual future<std::vector<sstring>> enumerate_collections() const = 0;
+      virtual future<std::vector<string>> enumerate_collections() const = 0;
       /// Commit the entire Store
       ///
       /// All of it. No questions asked. This function acts as a
