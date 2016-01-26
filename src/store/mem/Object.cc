@@ -36,25 +36,29 @@ namespace crimson {
   namespace store {
     /// Memory based object store
     namespace mem {
-      future<IovecRef> read(const Range& r) const {
-	check_range(r);
-	return data.read(r);
+      future<IovecRef> Object::read(const Range& r) const {
+	if (!in_range(r))
+	  return make_exception_future<IovecRef>(std::system_error(errc::out_of_range));
+	else
+	  return data.read(r);
       }
 
-      future<> write(IovecRef iov) {
-	return data.write(iov);
+      future<> Object::write(IovecRef&& iov) {
+	return data.write(std::move(iov));
       }
 
-      future<> zero(const Range& r) {
-	if (data_len < range.offset + range.length)
-	  data_len = range.offset + range.length;
+      future<> Object::zero(const Range& r) {
+	if (data_len < r.offset + r.length)
+	  data_len = r.offset + r.length;
 	return data.hole_punch(r);
       }
 
-      future<> hole_punch(const Range& r) {
-	if (data_len < range.offset + range.length)
-	  data_len = range.offset + range.length;
-	return data.hole_punch(r);
+      future<> Object::hole_punch(const Range& r) {
+	if (!in_range(r))
+	  return make_exception_future(std::system_error(
+					 errc::out_of_range));
+	else
+	  return data.hole_punch(r);
       }
     } // namespace mem
   } // namespace store

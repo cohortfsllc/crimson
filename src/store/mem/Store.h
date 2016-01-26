@@ -73,7 +73,7 @@ namespace crimson {
 	}
 
 	/// Get the CPU to look up a collection
-	unsigned get_cpu(const sstring& cid) const noexcept override {
+	unsigned get_cpu(const string& cid) const noexcept override {
 	  return xxHash()(cid) % smp::count;
 	}
 
@@ -95,13 +95,13 @@ namespace crimson {
 	/// to the call.
 	///
 	/// \param[in] cid Collection ID
-	future<CollectionRef>create_collection(sstring cid) override;
+	future<CollectionRef>create_collection(string cid) override;
 	/// Enumerate all collections in this store
 	///
 	/// \note Ceph ObjectStore just returns them all at once. Do we
 	/// think we'll need cursor-like logic the way we do for
 	/// attribute and object enumeration?
-	future<std::vector<sstring>> enumerate_collections() const override;
+	future<std::vector<string>> enumerate_collections() const override;
 	/// Commit the entire Store
 	///
 	/// All of it. No questions asked. This function acts as a

@@ -185,7 +185,7 @@ namespace crimson {
 	    });
 	}
 
-	future<> PageSet::hole_pounch(Range range) noexcept {
+	future<> PageSet::hole_punch(const Range& range) noexcept {
 	  return parallel_for_each(
 	    boost::make_counting_iterator(0ul),
 	    boost::make_counting_iterator(partitions.size()),
@@ -205,7 +205,7 @@ namespace crimson {
 	    });
 	}
 
-	future<IovecRef> PageSet::read(Range range) const noexcept {
+	future<IovecRef> PageSet::read(const Range& range) const noexcept {
 	  return map_reduce(
 	    boost::make_counting_iterator(0ul),
 	    boost::make_counting_iterator(partitions.size()),

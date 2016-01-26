@@ -192,8 +192,8 @@ namespace crimson {
 	  }
 
 	  future<> write(IovecRef&& iov) noexcept;
-	  future<> hole_pounch(Range range) noexcept;
-	  future<IovecRef> read(Range range) const noexcept;
+	  future<> hole_punch(const Range& range) noexcept;
+	  future<IovecRef> read(const Range& range) const noexcept;
 	};
       } // namespace _
     } // namespace mem

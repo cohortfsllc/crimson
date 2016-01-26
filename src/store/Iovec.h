@@ -52,7 +52,7 @@ namespace crimson {
       ///
       /// Represent a set of buffers and their offsets.
       struct Iovec {
-	using buffers = std::map<Offset, temporary_buffer<const char>>;
+	using buffers = std::map<Offset, temporary_const_buffer>;
 
 	buffers data;
 

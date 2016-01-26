@@ -55,19 +55,19 @@ namespace crimson {
     class Object {
     protected:
       CollectionRef coll;
-      const sstring oid;
+      const string oid;
 
     public:
       explicit Object(CollectionRef&& _coll,
-		      sstring&& _oid)
+		      string&& _oid)
 	: coll(std::move(_coll)), oid(std::move(_oid)) {}
       virtual ~Object() = default;
 
-      const sstring& get_oid() const {
+      const string& get_oid() const {
 	return oid;
       }
 
-      operator sstring() const {
+      operator string() const {
 	return oid;
       }
 
@@ -99,7 +99,7 @@ namespace crimson {
       /// old end of the object and the newly provided data. More
       /// sophisticated implementations of Store will omit the
       /// untouched data and store it as a "hole" in the file.
-      virtual future<> write(IovecRef data) = 0;
+      virtual future<> write(IovecRef&& data) = 0;
       /// Zero out the indicated byte range within an object.
       ///
       /// Some Store instances may optimize this to release the
@@ -120,7 +120,7 @@ namespace crimson {
       ///
       /// \throws store::errc::out_of_range if attempt is made to punch hole
       ///         after the end of an object.
-      virtual future<> hole_punch(const Range range) = 0;
+      virtual future<> hole_punch(const Range& range) = 0;
       /// Truncate an object.
       ///
       /// \note This will only make objects shorter, you cannot
@@ -145,8 +145,8 @@ namespace crimson {
       ///
       /// \param[in] ns   Attribute namespace
       /// \param[in] attr Attribute key
-      virtual future<temporary_buffer<char>> getattr(attr_ns ns,
-						     sstring attr) const = 0;
+      virtual future<temporary_const_buffer> getattr(attr_ns ns,
+						     string attr) const = 0;
       /// Get some attribute values
       ///
       /// \param[in] ns    Attribute namespace
@@ -154,34 +154,34 @@ namespace crimson {
       ///
       /// \return A set vector of attribute values, in the same order
       /// as the keys supplied.
-      virtual future<std::vector<temporary_buffer<char>>> getattrs(
-	attr_ns ns, std::vector<sstring> attrs) const = 0;
+      virtual future<std::vector<temporary_const_buffer>> getattrs(
+	attr_ns ns, std::vector<string> attrs) const = 0;
 
       /// Set a single attribute
       ///
       /// \param[in] ns   Attribute namespace
       /// \param[in] attr Attribute key
       /// \param[in] val  Attribute value
-      virtual future<> setattr(attr_ns ns, sstring attr,
-			       temporary_buffer<char> val) = 0;
+      virtual future<> setattr(attr_ns ns, string attr,
+			       temporary_const_buffer val) = 0;
       /// Sets attributes
       ///
       /// \param[in] ns       Attribute namespace
       /// \param[in] attrvals Attribute key/value pairs
       virtual future<> setattr(
 	attr_ns ns,
-	std::vector<std::pair<sstring, temporary_buffer<char>>> attrpairs) = 0;
+	std::vector<std::pair<string, temporary_const_buffer>> attrpairs) = 0;
       /// Remove an attribute
       ///
       /// \param[in] ns   Attribute namespace
       /// \param[in] attr Attribute key
-      virtual future<> rmattr(attr_ns ns, sstring attr) = 0;
+      virtual future<> rmattr(attr_ns ns, string attr) = 0;
       /// Remove several attributes
       ///
       /// \param[in] ns    Attribute namespace
       /// \param[in] attrs Attribute keys
       virtual future<> rmattrs(attr_ns ns,
-			       std::vector<sstring> attr) = 0;
+			       std::vector<string> attr) = 0;
       /// Remove attributes in an overcomplicated way
       ///
       /// When given two valid cursors, remove attributes that would
@@ -199,12 +199,12 @@ namespace crimson {
 				    AttrCursorRef lb,
 				    AttrCursorRef ub) = 0;
       /// Enumerate attributes (just the names)
-      virtual future<std::vector<sstring>, AttrCursorRef> enumerate_attr_keys(
+      virtual future<std::vector<string>, AttrCursorRef> enumerate_attr_keys(
 	attr_ns ns,
 	boost::optional<AttrCursorRef> cursor,
 	size_t to_return) const = 0;
       /// Enumerate attributes (key/value)
-      virtual future<std::vector<std::pair<sstring, temporary_buffer<char>>>,
+      virtual future<std::vector<std::pair<string, temporary_const_buffer>>,
 		     AttrCursorRef> enumerate_attr_kvs(
 		       attr_ns ns,
 		       boost::optional<AttrCursorRef> cursor,
@@ -219,7 +219,7 @@ namespace crimson {
       /// \note Not supported on stores without a well-defined
       /// enumeration order for attributes.
       virtual future<AttrCursorRef> attr_cursor(attr_ns ns,
-						sstring attr) const;
+						string attr) const;
 
       /// Clone this object into another object
       ///
@@ -258,12 +258,12 @@ namespace crimson {
       /// single operation.
       ///
       /// \see set_header
-      virtual future<temporary_buffer<char>> get_header() const = 0;
+      virtual future<temporary_const_buffer> get_header() const = 0;
       /// Set the object "header"
       ///
       /// param[in] header Header to set
       /// \see get_header
-      virtual future<> set_header(temporary_buffer<char> header) = 0;
+      virtual future<> set_header(temporary_const_buffer header) = 0;
       /// Get allocated extents within a range
       ///
       /// Return a list of extents that contain actual data within a
@@ -296,7 +296,7 @@ namespace crimson {
       ///
       /// \see split_collection
       virtual future<>move_to_collection(Collection& dest_coll,
-					 const sstring& dest_oid) = 0;
+					 const string& dest_oid) = 0;
       /// Commit all outstanding modifications on this object
       ///
       /// This function acts as a barrier. It will complete when all

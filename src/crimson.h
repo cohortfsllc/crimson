@@ -37,13 +37,19 @@ namespace crimson {
   using seastar::make_ready_future;
   using seastar::make_exception_future;
   using seastar::do_for_each;
+  using seastar::parallel_for_each;
+  using seastar::map_reduce;
 
   using seastar::shared_ptr;
   using seastar::make_shared;
   using seastar::lw_shared_ptr;
   using seastar::make_lw_shared;
+  using seastar::foreign_ptr;
+  using seastar::make_foreign;
+  using seastar::deleter;
 
   using string = seastar::sstring;
+  using temporary_const_buffer = seastar::temporary_buffer<const char>;
   using temporary_buffer = seastar::temporary_buffer<char>;
 
   using seastar::now;

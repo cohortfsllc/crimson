@@ -40,14 +40,21 @@
 namespace crimson {
   class xxHash {
   private:
-    XXH64_state_t state;
+    // Yuck.
+    XXH64_stateBody_t statebody;
+    const XXH64_state_t* state() const {
+      return reinterpret_cast<const XXH64_state_t*>(&statebody);
+    }
+    XXH64_state_t* state() {
+      return reinterpret_cast<XXH64_state_t*>(&statebody);
+    }
   public:
     xxHash(uint64_t seed = 0) {
-      XXH64_reset(&state, seed);
+      XXH64_reset(state(), seed);
     }
 
     void reset(uint64_t seed = 0) {
-      XXH64_reset(&state, seed);
+      XXH64_reset(state(), seed);
     }
 
     template<typename Cont>
@@ -55,22 +62,23 @@ namespace crimson {
 		typename std::result_of_t<decltype(&Cont::data)(
 		  Cont)> = nullptr) noexcept {
       Expects(v.data() != nullptr);
-      auto ret = XXH64_update(&state,
+      auto ret = XXH64_update(state(),
 			      static_cast<void*>(v.data()),
 			      v.length() * sizeof(Cont::value_type));
       Ensures(ret == XXH_OK);
     }
     template<typename CharT, typename Size, Size max_size>
-    void update(const basic_sstring<CharT, Size, max_size>& v) noexcept {
+    void update(
+      const seastar::basic_sstring<CharT, Size, max_size>& v) noexcept {
       Expects(v.c_str() != nullptr);
-      auto ret = XXH64_update(&state,
+      auto ret = XXH64_update(state(),
 			      static_cast<void*>(v.c_str()),
 			      v.length() * sizeof(CharT));
       Ensures(ret == XXH_OK);
     }
 
     uint64_t digest() const noexcept {
-      return XXH64_digest(&state);
+      return XXH64_digest(state());
     }
 
     template<typename Cont>
@@ -84,7 +92,7 @@ namespace crimson {
     }
 
     template<typename CharT, typename Size, Size max_size>
-    uint64_t operator()(const basic_sstring<CharT, Size, max_size>& v,
+    uint64_t operator()(const seastar::basic_sstring<CharT, Size, max_size>& v,
 			uint64_t seed = 0) noexcept {
       Expects(v.c_str() != nullptr);
       return XXH64(static_cast<const void*>(v.c_str()),

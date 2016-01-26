@@ -36,6 +36,8 @@
 
 #include "cxx_function/cxx_function.hpp"
 
+#include "crimson.h"
+
 namespace crimson {
 
   /// Storage interface
@@ -55,7 +57,7 @@ namespace crimson {
     class Collection {
     private:
       Store& store;
-      const sstring cid;
+      const string cid;
 
     public:
       virtual void ref()  = 0;
@@ -67,7 +69,7 @@ namespace crimson {
 	c->unref();
       }
 
-      explicit Collection(Store& _store, sstring _cid)
+      explicit Collection(Store& _store, string _cid)
 	: store(_store), cid(std::move(_cid)) {}
 
       virtual ~Collection() = default;
@@ -77,9 +79,9 @@ namespace crimson {
       Collection(Collection&&) = delete;
       Collection& operator =(Collection&&) = delete;
 
-      virtual unsigned get_cpu(const sstring& oid) const = 0;
+      virtual unsigned get_cpu(const string& oid) const = 0;
 
-      const sstring& get_cid() const {
+      const string& get_cid() const {
 	return cid;
       }
 
@@ -90,7 +92,7 @@ namespace crimson {
       /// @param[in] oid  Name of the object that should exist
       /// @param[in] excl True if the object must not already exist
       /// @return A reference to the object
-      virtual future<ObjectRef> create(sstring oid, bool excl = false) = 0;
+      virtual future<ObjectRef> create(string oid, bool excl = false) = 0;
       /// Remove this collection
       ///
       /// The collection must be empty
@@ -110,7 +112,7 @@ namespace crimson {
       /// \see move_coll_rename
       virtual future<> split_collection(
 	Collection& dest,
-	cxx_function::unique_function<bool(const sstring& oid)> pred) = 0;
+	cxx_function::unique_function<bool(const string& oid)> pred) = 0;
       /// Enumerate objects in a collection
       ///
       ///
@@ -121,7 +123,7 @@ namespace crimson {
       ///                      remain) but not more.
       ///
       /// \see obj_cursor
-      virtual future<std::vector<sstring>, OidCursorRef> enumerate_objects(
+      virtual future<std::vector<string>, OidCursorRef> enumerate_objects(
 	boost::optional<OidCursorRef> cursor,
 	size_t to_return) const = 0;
       /// Get cursor for a given object
@@ -134,7 +136,7 @@ namespace crimson {
       ///
       /// \note Not supported on stores without a well-defined
       /// enumeration order for oids.
-      virtual future<OidCursorRef> obj_cursor(sstring oid) const = 0;
+      virtual future<OidCursorRef> obj_cursor(string oid) const = 0;
     };
   } // namespace store
 } // namespace crimson

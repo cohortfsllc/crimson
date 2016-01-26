@@ -48,7 +48,7 @@
 #include "GSL/include/gsl.h"
 #include "cxx_function/cxx_function.hpp"
 
-#include "common/basics.h"
+#include "crimson.h"
 
 namespace crimson {
 

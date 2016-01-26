@@ -46,16 +46,14 @@ namespace crimson {
     /// Memory based object store
     namespace mem {
       class Object : crimson::store::Object {
-	using temporary_buffer = temporary_buffer<char>;
 	_::PageSet data;
 	Length data_len;
-	std::array<std::map<sstring,sstring>, (unsigned)attr_ns::END> attrs;
-	sstring omap_header;
+	std::array<std::map<string,string>, (unsigned)attr_ns::END> attrs;
+	string omap_header;
 
-	void check_range(const Range& range) const {
-	  if (range.offset + range.length > data_len)
-	    throw std::system_error(store::errc::out_of_range);
-	}
+	bool in_range(const Range& range) const {
+	  return (range.offset + range.length <= data_len);
+	    }
 
 	/// Read data from an object
 	future<IovecRef> read(const Range& r) const override;
@@ -65,7 +63,7 @@ namespace crimson {
 	///
 	/// \note For the memstore, zero is equivalent to hole_punch,
 	/// except that zero will not throw store::errc::out_of_range
-	future<> zero{const Range& range) override;
+	future<> zero(const Range& range) override;
 	/// Punch a hole in the object of the given dimension
 	future<> hole_punch(const Range& range) override;
 	/// Truncate an object.
@@ -84,8 +82,8 @@ namespace crimson {
 	///
 	/// \param[in] ns   Attribute namespace
 	/// \param[in] attr Attribute key
-	virtual future<temporary_buffer> getattr(attr_ns ns,
-						 sstring attr) const = 0;
+	virtual future<temporary_const_buffer> getattr(attr_ns ns,
+						       string attr) const = 0;
 	/// Get some attribute values
 	///
 	/// \param[in] ns    Attribute namespace
@@ -93,155 +91,156 @@ namespace crimson {
 	///
 	/// \return A set vector of attribute values, in the same order
 	/// as the keys supplied.
-	virtual future<std::vector<temporary_buffer>> getattrs(
-	  attr_ns ns, std::vector<sstring> attrs) const = 0;
+	virtual future<std::vector<temporary_const_buffer>> getattrs(
+	  attr_ns ns, std::vector<string> attrs) const = 0;
 
-      /// Set a single attribute
-      ///
-      /// \param[in] ns   Attribute namespace
-      /// \param[in] attr Attribute key
-      /// \param[in] val  Attribute value
-      virtual future<> setattr(attr_ns ns, sstring attr,
-			       temporary_buffer val) = 0;
-      /// Sets attributes
-      ///
-      /// \param[in] ns       Attribute namespace
-      /// \param[in] attrvals Attribute key/value pairs
-      virtual future<> setattr(
-	attr_ns ns,
-	std::vector<std::pair<sstring, temporary_buffer>>> attrpairs) = 0;
-      /// Remove an attribute
-      ///
-      /// \param[in] ns   Attribute namespace
-      /// \param[in] attr Attribute key
-      virtual future<> rmattr(attr_ns ns, sstring attr) = 0;
-      /// Remove several attributes
-      ///
-      /// \param[in] ns    Attribute namespace
-      /// \param[in] attrs Attribute keys
-      virtual future<> rmattrs(attr_ns ns,
-			       std::vector<sstring> attr) = 0;
-      /// Remove attributes in an overcomplicated way
-      ///
-      /// When given two valid cursors, remove attributes that would
-      /// have been enumerated starting with `lb_cursor` and stopping
-      /// before attributes that would have been enumerated starting
-      /// with `ub_cursor`.
-      ///
-      /// \param[in] ns Attribute namespace
-      /// \param[in] lb Lower bound of attributes to remove
-      /// \param[in] ub Upper bound of attributes to remove (exclusive)
-      ///
-      /// \note Not supported by stores without a well-defined
-      /// enumeration order for attributes.
-      virtual future<> rmattr_range(attr_ns ns,
-				    AttrCursorRef lb,
-				    AttrCursorRef ub) = 0;
+	/// Set a single attribute
+	///
+	/// \param[in] ns   Attribute namespace
+	/// \param[in] attr Attribute key
+	/// \param[in] val  Attribute value
+	virtual future<> setattr(attr_ns ns, string attr,
+				 temporary_buffer val) = 0;
+	/// Sets attributes
+	///
+	/// \param[in] ns       Attribute namespace
+	/// \param[in] attrvals Attribute key/value pairs
+	virtual future<> setattr(
+	  attr_ns ns,
+	  std::vector<std::pair<string, temporary_buffer>>&& attrpairs) = 0;
+	/// Remove an attribute
+	///
+	/// \param[in] ns   Attribute namespace
+	/// \param[in] attr Attribute key
+	virtual future<> rmattr(attr_ns ns, string attr) = 0;
+	/// Remove several attributes
+	///
+	/// \param[in] ns    Attribute namespace
+	/// \param[in] attrs Attribute keys
+	virtual future<> rmattrs(attr_ns ns,
+				 std::vector<string> attr) = 0;
+	/// Remove attributes in an overcomplicated way
+	///
+	/// When given two valid cursors, remove attributes that would
+	/// have been enumerated starting with `lb_cursor` and stopping
+	/// before attributes that would have been enumerated starting
+	/// with `ub_cursor`.
+	///
+	/// \param[in] ns Attribute namespace
+	/// \param[in] lb Lower bound of attributes to remove
+	/// \param[in] ub Upper bound of attributes to remove (exclusive)
+	///
+	/// \note Not supported by stores without a well-defined
+	/// enumeration order for attributes.
+	virtual future<> rmattr_range(attr_ns ns,
+				      AttrCursorRef lb,
+				      AttrCursorRef ub) = 0;
 	/// Enumerate attributes (just the names)
-      virtual future<std::vector<sstring>, AttrCursorRef> enumerate_attrs(
-	attr_ns ns,
-	boost::optional<AttrCursorRef> cursor,
-	size_t to_return) const = 0;
-      /// Enumerate attributes (key/value)
-      virtual future<std::vector<std::pair<sstring, temporary_buffer>>,
-		     AttrCursorRef> enumerate_attrs(
-		       attr_ns ns,
-		       boost::optional<AttrCursorRef> cursor,
-		       size_t to_return) const = 0;
+	virtual future<std::vector<string>, AttrCursorRef> enumerate_attr_keys(
+	  attr_ns ns,
+	  boost::optional<AttrCursorRef&&> cursor,
+	  size_t to_return) const = 0;
+	/// Enumerate attributes (key/value)
+	virtual future<std::vector<std::pair<string, temporary_buffer>>,
+		       AttrCursorRef> enumerate_attr_kvs(
+			 attr_ns ns,
+			 boost::optional<AttrCursorRef&&> cursor,
+			 size_t to_return) const = 0;
 
-      /// Get cursor for attribute key
-      ///
-      /// This function gives a cursor that will continue an
-      /// enumeration as if a previous enumeration had ended
-      /// just before returning `attr`.
-      ///
-      /// \note Not supported on stores without a well-defined
-      /// enumeration order for attributes.
-      virtual future<AttrCursorRef> attr_cursor(attr_ns ns, string attr) const;
+	/// Get cursor for attribute key
+	///
+	/// This function gives a cursor that will continue an
+	/// enumeration as if a previous enumeration had ended
+	/// just before returning `attr`.
+	///
+	/// \note Not supported on stores without a well-defined
+	/// enumeration order for attributes.
+	virtual future<AttrCursorRef> attr_cursor(attr_ns ns, string attr) const;
 
-      /// Clone this object into another object
-      ///
-      /// Low-cost (e.g., O(1)) cloning (if supported) is best, but
-      /// fallback to an O(n) copy is allowed.  All object data are
-      /// cloned.
-      ///
-      /// This clones everything, attributes, omap header, etc.
-      ///
-      /// \param[in] dest Destination object
-      ///
-      /// \note Objects must be in the same collection.
-      ///
-      /// \see clone_range
-      virtual future<> clone{Object& dest_obj) const = 0;
-      /// Clone a byte range from one object to another
-      ///
-      /// This only affects the data portion of the destination object.
-      ///
-      /// \see clone
-      virtual future<> clone_range(Range src_range,
-				   Object& dest,
-				   Offset dest_offset) const = 0;
+	/// Clone this object into another object
+	///
+	/// Low-cost (e.g., O(1)) cloning (if supported) is best, but
+	/// fallback to an O(n) copy is allowed.  All object data are
+	/// cloned.
+	///
+	/// This clones everything, attributes, omap header, etc.
+	///
+	/// \param[in] dest Destination object
+	///
+	/// \note Objects must be in the same collection.
+	///
+	/// \see clone_range
+	virtual future<> clone(Object& dest_obj) const = 0;
+	/// Clone a byte range from one object to another
+	///
+	/// This only affects the data portion of the destination object.
+	///
+	/// \see clone
+	virtual future<> clone_range(Range src_range,
+				     Object& dest,
+				     Offset dest_offset) const = 0;
 
-      /// Inform store of future allocation plans
-      ///
-      /// @param[in] obj_size   Expected total size of object
-      /// @param[in] write_size Expected size of write operations
-      virtual future<>set_alloc_hint(Length obj_size,
-				     Length write_size) = 0;
+	/// Inform store of future allocation plans
+	///
+	/// @param[in] obj_size   Expected total size of object
+	/// @param[in] write_size Expected size of write operations
+	virtual future<>set_alloc_hint(Length obj_size,
+				       Length write_size) = 0;
 
-      /// Get the object "header"
-      ///
-      /// Ceph object stores have an additional piece of data, an
-      /// 'OMAP Header' that is read or written in its entirety in a
-      /// single operation.
-      ///
-      /// \see set_header
-      virtual future<temporary_buffer> get_header() const = 0;
-      /// Set the object "header"
-      ///
-      /// param[in] header Header to set
-      /// \see get_header
-      virtual future<> set_header(temporary_buffer header) = 0;
-      /// Get allocated extents within a range
-      ///
-      /// Return a list of extents that contain actual data within a
-      /// range.
-      ///
-      /// \note Is there a better interface for this?
-      ///
-      /// \param[in] range Range of object to query
-      ///
-      /// \see hole_punch
-      virtual future<std::vector<Range>> get_extents(Range range) const = 0;
-      /// Move object from one collection to another
-      ///
-      /// \note This is used by Ceph's recovery logic, to move objects
-      /// out of Temporary Collections.
-      ///
-      /// \warning The same concerns apply as for
-      /// split_collection.
-      ///
-      /// \warning It's very likely that this call invalidates
-      /// outstanding handles to the object it moves. In some
-      /// implementations, this call might function as a barrier,
-      /// preventing the acquisition of new handles on the object in
-      /// question and waiting for outstanding handles to be
-      /// released. If this is the case, the Store should make sure
-      /// not to deadlock itself.
-      ///
-      /// \param[in] dest_coll Collection to which to move the object
-      /// \param[in] dest_oid  OID it should have there
-      ///
-      /// \see split_collection
-      virtual future<>(Collection& dest_coll,
-		       const sstring& dest_oid) = 0;
-      /// Commit all outstanding modifications on this object
-      ///
-      /// This function acts as a barrier. It will complete when all
-      /// outstanding operations are complete and written to stable storage.
+	/// Get the object "header"
+	///
+	/// Ceph object stores have an additional piece of data, an
+	/// 'OMAP Header' that is read or written in its entirety in a
+	/// single operation.
+	///
+	/// \see set_header
+	virtual future<temporary_const_buffer> get_header() const = 0;
+	/// Set the object "header"
+	///
+	/// param[in] header Header to set
+	/// \see get_header
+	virtual future<> set_header(temporary_const_buffer header) = 0;
+	/// Get allocated extents within a range
+	///
+	/// Return a list of extents that contain actual data within a
+	/// range.
+	///
+	/// \note Is there a better interface for this?
+	///
+	/// \param[in] range Range of object to query
+	///
+	/// \see hole_punch
+	virtual future<std::vector<Range>> get_extents(const Range& range) const = 0;
+	/// Move object from one collection to another
+	///
+	/// \note This is used by Ceph's recovery logic, to move objects
+	/// out of Temporary Collections.
+	///
+	/// \warning The same concerns apply as for
+	/// split_collection.
+	///
+	/// \warning It's very likely that this call invalidates
+	/// outstanding handles to the object it moves. In some
+	/// implementations, this call might function as a barrier,
+	/// preventing the acquisition of new handles on the object in
+	/// question and waiting for outstanding handles to be
+	/// released. If this is the case, the Store should make sure
+	/// not to deadlock itself.
+	///
+	/// \param[in] dest_coll Collection to which to move the object
+	/// \param[in] dest_oid  OID it should have there
+	///
+	/// \see split_collection
+	virtual future<>move_to_collection(Collection& dest_coll,
+					   const string& dest_oid) = 0;
+	/// Commit all outstanding modifications on this object
+	///
+	/// This function acts as a barrier. It will complete when all
+	/// outstanding operations are complete and written to stable storage.
 	virtual future<> commit() = 0;
       };
     } // namespace mem
+  } // namespace store
 } // namespace crimson
 
 #endif // CRIMSON_STORE_MEM_OBJECT_H
