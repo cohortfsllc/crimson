@@ -37,6 +37,7 @@
 
 #include "store/Object.h"
 
+#include "common/xxHash.h"
 #include "PageSet.h"
 
 
@@ -46,14 +47,24 @@ namespace crimson {
     /// Memory based object store
     namespace mem {
       class Object : crimson::store::Object {
+	const unsigned cpu;
 	_::PageSet data;
 	Length data_len;
-	std::array<std::map<string,string>, (unsigned)attr_ns::END> attrs;
+	std::array<std::map<string,lw_shared_ptr<string>>,
+		   (unsigned)attr_ns::END> attarray;
 	string omap_header;
 
 	bool in_range(const Range& range) const {
 	  return (range.offset + range.length <= data_len);
-	    }
+	}
+
+	bool local() const {
+	  return engine().cpu_id() == cpu;
+	}
+
+	Object(CollectionRef&& _coll, string&& _oid)
+	  : crimson::store::Object(std::move(_coll), std::move(_oid)),
+	    cpu(xxHash()(oid) % smp::count) {}
 
 	/// Read data from an object
 	future<IovecRef> read(const Range& r) const override;
@@ -68,84 +79,42 @@ namespace crimson {
 	future<> hole_punch(const Range& range) override;
 	/// Truncate an object.
 	future<> truncate(const Length length) override;
-	/// Remove an object
-	///
-	/// All portions of the object are removed. This should almost
-	/// certainly not be done 'by name' since we have to acquire the
-	/// object in some sense anyway in case temporary buffers are
-	/// outstanding with data in the process of being sent.
-	virtual future<> remove() = 0;
+	/// XXX Implement this when the Collection is better developed
+	future<> remove() = 0;
 	/// Get a single attribute value
-	///
-	/// In the case where we want only one, don't pay for the whole
-	/// vector overhead business.
-	///
-	/// \param[in] ns   Attribute namespace
-	/// \param[in] attr Attribute key
-	virtual future<temporary_const_buffer> getattr(attr_ns ns,
-						       string attr) const = 0;
+	future<const_buffer> getattr(
+	  attr_ns ns, string&& attr) const override;
 	/// Get some attribute values
-	///
-	/// \param[in] ns    Attribute namespace
-	/// \param[in] attrs Attribute keys
-	///
-	/// \return A set vector of attribute values, in the same order
-	/// as the keys supplied.
-	virtual future<std::vector<temporary_const_buffer>> getattrs(
-	  attr_ns ns, std::vector<string> attrs) const = 0;
-
+	future<std::vector<const_buffer>> getattrs(
+	  attr_ns ns, std::vector<string>&& attrs) const override;
 	/// Set a single attribute
-	///
-	/// \param[in] ns   Attribute namespace
-	/// \param[in] attr Attribute key
-	/// \param[in] val  Attribute value
-	virtual future<> setattr(attr_ns ns, string attr,
-				 temporary_buffer val) = 0;
+	future<> setattr(attr_ns ns, string&& attr,
+			 const_buffer&& val) override;
 	/// Sets attributes
-	///
-	/// \param[in] ns       Attribute namespace
-	/// \param[in] attrvals Attribute key/value pairs
-	virtual future<> setattr(
+	future<> setattrs(
 	  attr_ns ns,
-	  std::vector<std::pair<string, temporary_buffer>>&& attrpairs) = 0;
+	  std::vector<pair<string, const_buffer>>&& attrpairs) override;
 	/// Remove an attribute
-	///
-	/// \param[in] ns   Attribute namespace
-	/// \param[in] attr Attribute key
-	virtual future<> rmattr(attr_ns ns, string attr) = 0;
+	virtual future<> rmattr(attr_ns ns, string&& attr) override;
 	/// Remove several attributes
-	///
-	/// \param[in] ns    Attribute namespace
-	/// \param[in] attrs Attribute keys
-	virtual future<> rmattrs(attr_ns ns,
-				 std::vector<string> attr) = 0;
+	future<> rmattrs(attr_ns ns, std::vector<string>&& attr) override;
 	/// Remove attributes in an overcomplicated way
 	///
-	/// When given two valid cursors, remove attributes that would
-	/// have been enumerated starting with `lb_cursor` and stopping
-	/// before attributes that would have been enumerated starting
-	/// with `ub_cursor`.
-	///
-	/// \param[in] ns Attribute namespace
-	/// \param[in] lb Lower bound of attributes to remove
-	/// \param[in] ub Upper bound of attributes to remove (exclusive)
-	///
-	/// \note Not supported by stores without a well-defined
-	/// enumeration order for attributes.
-	virtual future<> rmattr_range(attr_ns ns,
-				      AttrCursorRef lb,
-				      AttrCursorRef ub) = 0;
+	/// Not supported for memstore right now
+	future<> rmattr_range(attr_ns ns,
+			      AttrCursorRef lb,
+			      AttrCursorRef ub) override {
+	  throw std::system_error(errc::operation_not_supported);
+	}
 	/// Enumerate attributes (just the names)
-	virtual future<std::vector<string>, AttrCursorRef> enumerate_attr_keys(
-	  attr_ns ns,
-	  boost::optional<AttrCursorRef&&> cursor,
-	  size_t to_return) const = 0;
+	future<std::vector<string>, optional<AttrCursorRef>>
+	  enumerate_attr_keys(attr_ns ns, optional<AttrCursorRef> cursor,
+			      size_t to_return) const override;
 	/// Enumerate attributes (key/value)
-	virtual future<std::vector<std::pair<string, temporary_buffer>>,
-		       AttrCursorRef> enumerate_attr_kvs(
-			 attr_ns ns,
-			 boost::optional<AttrCursorRef&&> cursor,
-			 size_t to_return) const = 0;
+	future<std::vector<pair<string, const_buffer>>,
+	       optional<AttrCursorRef>> enumerate_attr_kvs(
+		 attr_ns ns, optional<AttrCursorRef> cursor,
+		 size_t to_return) const override;
 
 	/// Get cursor for attribute key
 	///
@@ -194,12 +163,12 @@ namespace crimson {
 	/// single operation.
 	///
 	/// \see set_header
-	virtual future<temporary_const_buffer> get_header() const = 0;
+	virtual future<const_buffer> get_header() const = 0;
 	/// Set the object "header"
 	///
 	/// param[in] header Header to set
 	/// \see get_header
-	virtual future<> set_header(temporary_const_buffer header) = 0;
+	virtual future<> set_header(const_buffer header) = 0;
 	/// Get allocated extents within a range
 	///
 	/// Return a list of extents that contain actual data within a

@@ -148,9 +148,7 @@ namespace crimson {
 	  PageSetSlice& operator =(const PageSetSlice&) = delete;
 	  PageSetSlice& operator =(PageSetSlice&&) = delete;
 
-	  /// Truncate a pageset
-	  ///
-	  /// Delete all pages after a given offset
+	  /// Delete all pages within a given range
 	  void hole_punch(const Range range) noexcept;
 
 	  /// Write pages

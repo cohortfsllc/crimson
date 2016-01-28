@@ -25,6 +25,8 @@
 ///
 /// \author Adam C. Emerson <aemerson@redhat.com>
 
+#include <experimental/optional>
+
 #include <core/future.hh>
 #include <core/sharded.hh>
 #include <core/shared_ptr.hh>
@@ -49,7 +51,7 @@ namespace crimson {
   using seastar::deleter;
 
   using string = seastar::sstring;
-  using temporary_const_buffer = seastar::temporary_buffer<const char>;
+  using const_buffer = seastar::temporary_buffer<const char>;
   using temporary_buffer = seastar::temporary_buffer<char>;
 
   using seastar::now;
@@ -60,4 +62,9 @@ namespace crimson {
 
   using seastar::engine;
   using seastar::smp;
+
+  using std::experimental::optional;
+  using std::experimental::nullopt;
+  using std::pair;
+  using std::tuple;
 }

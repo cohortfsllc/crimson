@@ -64,7 +64,8 @@ namespace crimson {
       object_exists,
       operation_not_supported,
       invalid_handle,
-      out_of_range
+      out_of_range,
+      invalid_argument
     };
 
     class error_category : public std::error_category {
@@ -77,6 +78,8 @@ namespace crimson {
 	  return std::errc::no_such_file_or_directory;
 	case errc::no_such_object:
 	  return std::errc::no_such_file_or_directory;
+	case errc::no_such_attribute_key:
+	  return std::errc::no_such_file_or_directory;
 	case errc::collection_exists:
 	  return std::errc::file_exists;
 	case errc::object_exists:
@@ -84,6 +87,8 @@ namespace crimson {
 	case errc::operation_not_supported:
 	  return std::errc::operation_not_supported;
 	case errc::out_of_range:
+	  return std::errc::invalid_argument;
+	case errc::invalid_argument:
 	  return std::errc::invalid_argument;
 	default:
 	  return std::error_condition(ev, *this);

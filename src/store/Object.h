@@ -46,7 +46,18 @@ namespace crimson {
     /// Attribute namespace specifier
     enum class attr_ns { xattr, omap, END };
 
-    class AttrCursor;
+    class AttrCursor {
+      friend void intrusive_ptr_add_ref(AttrCursor* a);
+      friend void intrusive_ptr_release(AttrCursor* a);
+      virtual void get() = 0;
+      virtual void put() = 0;
+    };
+    void intrusive_ptr_add_ref(AttrCursor* a) {
+      a->get();
+    }
+    void intrusive_ptr_release(AttrCursor* a) {
+      a->put();
+    }
     using AttrCursorRef = foreign_ptr<boost::intrusive_ptr<AttrCursor>>;
 
     /// A handle for object storage operations
@@ -145,8 +156,8 @@ namespace crimson {
       ///
       /// \param[in] ns   Attribute namespace
       /// \param[in] attr Attribute key
-      virtual future<temporary_const_buffer> getattr(attr_ns ns,
-						     string attr) const = 0;
+      virtual future<const_buffer> getattr(
+	attr_ns ns, string&& attr) const = 0;
       /// Get some attribute values
       ///
       /// \param[in] ns    Attribute namespace
@@ -154,34 +165,33 @@ namespace crimson {
       ///
       /// \return A set vector of attribute values, in the same order
       /// as the keys supplied.
-      virtual future<std::vector<temporary_const_buffer>> getattrs(
-	attr_ns ns, std::vector<string> attrs) const = 0;
+      virtual future<std::vector<const_buffer>> getattrs(
+	attr_ns ns, std::vector<string>&& attrs) const = 0;
 
       /// Set a single attribute
       ///
       /// \param[in] ns   Attribute namespace
       /// \param[in] attr Attribute key
       /// \param[in] val  Attribute value
-      virtual future<> setattr(attr_ns ns, string attr,
-			       temporary_const_buffer val) = 0;
+      virtual future<> setattr(attr_ns ns, string&& attr,
+			       const_buffer&& val) = 0;
       /// Sets attributes
       ///
       /// \param[in] ns       Attribute namespace
       /// \param[in] attrvals Attribute key/value pairs
-      virtual future<> setattr(
-	attr_ns ns,
-	std::vector<std::pair<string, temporary_const_buffer>> attrpairs) = 0;
+      virtual future<> setattrs(
+	attr_ns ns, std::vector<pair<string, const_buffer>>&& attrpairs) = 0;
       /// Remove an attribute
       ///
       /// \param[in] ns   Attribute namespace
       /// \param[in] attr Attribute key
-      virtual future<> rmattr(attr_ns ns, string attr) = 0;
+      virtual future<> rmattr(attr_ns ns, string&& attr) = 0;
       /// Remove several attributes
       ///
       /// \param[in] ns    Attribute namespace
       /// \param[in] attrs Attribute keys
       virtual future<> rmattrs(attr_ns ns,
-			       std::vector<string> attr) = 0;
+			       std::vector<string>&& attr) = 0;
       /// Remove attributes in an overcomplicated way
       ///
       /// When given two valid cursors, remove attributes that would
@@ -199,15 +209,15 @@ namespace crimson {
 				    AttrCursorRef lb,
 				    AttrCursorRef ub) = 0;
       /// Enumerate attributes (just the names)
-      virtual future<std::vector<string>, AttrCursorRef> enumerate_attr_keys(
-	attr_ns ns,
-	boost::optional<AttrCursorRef> cursor,
-	size_t to_return) const = 0;
+      virtual future<std::vector<string>, optional<AttrCursorRef>>
+	enumerate_attr_keys(attr_ns ns,
+			    optional<AttrCursorRef> cursor,
+			    size_t to_return) const = 0;
       /// Enumerate attributes (key/value)
-      virtual future<std::vector<std::pair<string, temporary_const_buffer>>,
-		     AttrCursorRef> enumerate_attr_kvs(
+      virtual future<std::vector<std::pair<string, const_buffer>>,
+		     optional<AttrCursorRef>> enumerate_attr_kvs(
 		       attr_ns ns,
-		       boost::optional<AttrCursorRef> cursor,
+		       optional<AttrCursorRef> cursor,
 		       size_t to_return) const = 0;
 
       /// Get cursor for attribute key
@@ -219,7 +229,7 @@ namespace crimson {
       /// \note Not supported on stores without a well-defined
       /// enumeration order for attributes.
       virtual future<AttrCursorRef> attr_cursor(attr_ns ns,
-						string attr) const;
+						string&& attr) const;
 
       /// Clone this object into another object
       ///
@@ -240,16 +250,16 @@ namespace crimson {
       /// This only affects the data portion of the destination object.
       ///
       /// \see clone
-      virtual future<> clone_range(Range src_range,
+      virtual future<> clone_range(const Range& src_range,
 				   Object& dest,
-				   Offset dest_offset) const = 0;
+				   const Offset dest_offset) const = 0;
 
       /// Inform store of future allocation plans
       ///
       /// @param[in] obj_size   Expected total size of object
       /// @param[in] write_size Expected size of write operations
-      virtual future<>set_alloc_hint(Length obj_size,
-				     Length write_size) = 0;
+      virtual future<>set_alloc_hint(const Length obj_size,
+				     const Length write_size) = 0;
 
       /// Get the object "header"
       ///
@@ -258,12 +268,12 @@ namespace crimson {
       /// single operation.
       ///
       /// \see set_header
-      virtual future<temporary_const_buffer> get_header() const = 0;
+      virtual future<const_buffer> get_header() const = 0;
       /// Set the object "header"
       ///
       /// param[in] header Header to set
       /// \see get_header
-      virtual future<> set_header(temporary_const_buffer header) = 0;
+      virtual future<> set_header(const_buffer&& header) = 0;
       /// Get allocated extents within a range
       ///
       /// Return a list of extents that contain actual data within a
@@ -274,7 +284,8 @@ namespace crimson {
       /// \param[in] range Range of object to query
       ///
       /// \see hole_punch
-      virtual future<std::vector<Range>> get_extents(Range range) const = 0;
+      virtual future<std::vector<Range>> get_extents(
+	const Range range) const = 0;
       /// Move object from one collection to another
       ///
       /// \note This is used by Ceph's recovery logic, to move objects
@@ -296,7 +307,7 @@ namespace crimson {
       ///
       /// \see split_collection
       virtual future<>move_to_collection(Collection& dest_coll,
-					 const string& dest_oid) = 0;
+					 string&& dest_oid) = 0;
       /// Commit all outstanding modifications on this object
       ///
       /// This function acts as a barrier. It will complete when all

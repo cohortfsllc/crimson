@@ -124,7 +124,7 @@ namespace crimson {
       ///
       /// \see obj_cursor
       virtual future<std::vector<string>, OidCursorRef> enumerate_objects(
-	boost::optional<OidCursorRef> cursor,
+	optional<OidCursorRef> cursor,
 	size_t to_return) const = 0;
       /// Get cursor for a given object
       ///
