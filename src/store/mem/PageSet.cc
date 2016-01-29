@@ -118,12 +118,12 @@ namespace crimson {
 	    if (end == begin) {
 	      iov->emplace(
 		range.offset, begin->second->data() + o, range.length,
-		make_object_deleter(PageRef(begin->second)));
+		make_object_deleter(make_foreign(PageRef(begin->second))));
 	      return iov;
 	    } else {
 	      iov->emplace(
 		range.offset, begin->second->data() + o, page_size - o,
-		make_object_deleter(PageRef(begin->second)));
+		make_object_deleter(make_foreign(PageRef(begin->second))));
 	    }
 	    ++begin;
 	    if (begin == pages.end())
@@ -138,7 +138,7 @@ namespace crimson {
 	    if (begin == end) {
 	      iov->emplace(
 		begin->first, begin->second->data(), unaligned_end,
-		make_object_deleter(PageRef(begin->second)));
+		make_object_deleter(make_foreign(PageRef(begin->second))));
 	      return iov;
 	    } else {
 	      --end;
@@ -148,13 +148,14 @@ namespace crimson {
 			[&iov](auto& kv) {
 			  iov->emplace(
 			    kv.first, kv.second->data(), page_size,
-			    make_object_deleter(PageRef(kv.second)));
+			    make_object_deleter(
+			      make_foreign(PageRef(kv.second))));
 			});
 	  if (unaligned_end) {
-	    iov->emplace(end->first, end->second->data(),
-			 unaligned_end,
-			 make_object_deleter(PageRef(begin->second)));
-
+	    iov->emplace(
+	      end->first, end->second->data(),
+	      unaligned_end,
+	      make_object_deleter(make_foreign(PageRef(begin->second))));
 	  }
 	  return iov;
 	}

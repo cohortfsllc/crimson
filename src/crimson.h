@@ -25,6 +25,9 @@
 ///
 /// \author Adam C. Emerson <aemerson@redhat.com>
 
+#ifndef CRIMSON_H
+#define CRIMSON_H
+
 #include <experimental/optional>
 
 #include <core/future.hh>
@@ -42,6 +45,8 @@ namespace crimson {
   using seastar::parallel_for_each;
   using seastar::map_reduce;
 
+  using std::unique_ptr;
+  using std::make_unique;
   using seastar::shared_ptr;
   using seastar::make_shared;
   using seastar::lw_shared_ptr;
@@ -53,6 +58,20 @@ namespace crimson {
   using string = seastar::sstring;
   using const_buffer = seastar::temporary_buffer<const char>;
   using temporary_buffer = seastar::temporary_buffer<char>;
+
+  const_buffer make_const_buffer(lw_shared_ptr<string>& s) {
+    return {s->c_str(), s->size(), seastar::make_object_deleter(
+	seastar::make_foreign(s)) };
+  }
+
+  // This is actually all right since where it's used there's no
+  // actual externally visible modification, and our concurrency model
+  // ensures we'll always be called on the processor that owns the
+  // reference count
+  const_buffer make_const_buffer(const lw_shared_ptr<string>& s) {
+    return {s->c_str(), s->size(), seastar::make_object_deleter(
+	make_foreign(const_cast<lw_shared_ptr<string>&>(s))) };
+  }
 
   using seastar::now;
   using seastar::input_stream;
@@ -68,3 +87,5 @@ namespace crimson {
   using std::pair;
   using std::tuple;
 }
+
+#endif // CRIMSON_H

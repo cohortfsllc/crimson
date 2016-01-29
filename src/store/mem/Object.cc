@@ -40,10 +40,10 @@ namespace crimson {
   namespace store {
     /// Memory based object store
     namespace mem {
-      future<IovecRef> Object::read(const Range& r) const {
+      future<IovecRef> Object::read(const Range r) const {
 	if (!local()) {
-	  smp::submit_to(
-	    cpu, [this, r]{ read(Range(r)); });
+	  return smp::submit_to(
+	    cpu, [this, r]{ return read(r); });
 	}
 	if (!in_range(r))
 	  return make_exception_future<IovecRef>(
@@ -52,30 +52,58 @@ namespace crimson {
 	  return data.read(r);
       }
 
-      future<> Object::write(IovecRef&& iov) {
+      future<> Object::write(IovecRef iov) {
+	if (!local()) {
+	  return smp::submit_to(
+	    cpu, [this,
+		  iov = std::move(iov)] () mutable {
+	      return write(std::move(iov));
+	    });
+	}
+
 	return data.write(std::move(iov));
       }
 
-      future<> Object::zero(const Range& r) {
+      future<> Object::zero(const Range r) {
+	if (!local()) {
+	  return smp::submit_to(
+	    cpu, [this, r]{ return zero(r); });
+	}
+
 	if (data_len < r.offset + r.length)
 	  data_len = r.offset + r.length;
 	return data.hole_punch(r);
       }
 
-      future<> Object::hole_punch(const Range& r) {
+      future<> Object::hole_punch(const Range r) {
+	if (!local()) {
+	  return smp::submit_to(
+	    cpu, [this, r]{ return hole_punch(r); });
+	}
+
 	if (!in_range(r))
 	  return make_exception_future(std::system_error(
 					 errc::out_of_range));
 	else
 	  return data.hole_punch(r);
       }
+
       future<> Object::truncate(const Length l) {
+	if (!local()) {
+	  return smp::submit_to(
+	    cpu, [this, l]{ return truncate(l); });
+	}
 	return data.hole_punch(
 	  Range(l, std::numeric_limits<uint64_t>::max() - l));
       }
 
-      future<const_buffer> Object::getattr(
-	attr_ns ns, string&& attr) const {
+      future<const_buffer> Object::getattr(attr_ns ns, string attr) const {
+	if (!local()) {
+	  return smp::submit_to(
+	    cpu, [this, ns, attr = std::move(attr)]{
+	      return getattr(ns, attr); });
+	}
+
 	if (ns >= attr_ns::END)
 	  return make_exception_future<const_buffer>(
 	    std::system_error(errc::invalid_argument,
@@ -89,25 +117,30 @@ namespace crimson {
 			      "'"s + (std::string)attr +
 			      "' could not be found"s));
 	return make_ready_future<const_buffer>(
-	  const_buffer(i->second->c_str(), i->second->size(),
-				 make_object_deleter(i->second)));
+	  make_const_buffer(i->second));
       }
 
-      future<std::vector<const_buffer>> Object::getattrs(
-	attr_ns ns, std::vector<string>&& attrs) const {
+      future<held_span<const_buffer>> Object::getattrs(
+	attr_ns ns, held_span<string> attrs) const {
+	if (!local()) {
+	  smp::submit_to(
+	    cpu, [this, ns, attrs = std::move(attrs)] () mutable {
+	      return getattrs(ns, std::move(attrs));
+	    });
+	}
 	if (ns >= attr_ns::END)
-	  return make_exception_future<std::vector<const_buffer>>(
+	  return make_exception_future<held_span<const_buffer>>(
 	    std::system_error(errc::invalid_argument,
 			      "Invalid attribute namespace"s));
 
-	std::vector<const_buffer> out;
+	auto out = std::make_unique<std::vector<const_buffer>>();
 
-	out.reserve(attrs.size());
+	out->reserve(attrs->size());
 	auto& m = attarray[(unsigned)ns];
 
 	try {
-	  boost::range::transform(
-	    attrs, out.begin(),
+	  std::transform(
+	    attrs->begin(), attrs->end(), out->begin(),
 	    [&m](const string& attr) {
 	      auto i = m.find(attr);
 	      if (i == m.end())
@@ -115,19 +148,28 @@ namespace crimson {
 					"'"s + (std::string)attr +
 					"' could not be found"s);
 	      else
-		return const_buffer(
-		  i->second->c_str(), i->second->size(),
-		  make_object_deleter(i->second));
+		// We're not modifying anything visible to the caller,
+		// and we're the only one accessing this.
+		return make_const_buffer(
+		  i->second);
 	    });
 	} catch (const std::exception& e) {
-	  return make_exception_future<std::vector<const_buffer>>(e);
+	  return make_exception_future<held_span<const_buffer>>(e);
 	}
-	return make_ready_future<std::vector<const_buffer>>(
+	return make_ready_future<held_span<const_buffer>>(
 	  std::move(out));
       }
 
-      future<> Object::setattr(attr_ns ns, string&& attr,
-			       const_buffer&& val) {
+      future<> Object::setattr(attr_ns ns, string attr,
+			       const_buffer val) {
+	if (!local()) {
+	  return smp::submit_to(
+	    cpu, [this, ns,
+		  attr = std::move(attr),
+		  val = std::move(val)] () mutable {
+	      return setattr(ns, attr, std::move(val));
+	    });
+	}
 	if (ns >= attr_ns::END)
 	  return make_exception_future<>(
 	    std::system_error(errc::invalid_argument,
@@ -150,9 +192,9 @@ namespace crimson {
 	return make_ready_future<>();
       }
 
-      future<> Object::setattrs(
-	attr_ns ns,
-	std::vector<pair<string, const_buffer>>&& attrpairs) {
+      future<> Object::setattrs(attr_ns ns,
+				held_span<pair<string,
+					       const_buffer>> attrpairs) {
 	if (ns >= attr_ns::END)
 	  return make_exception_future<>(
 	    std::system_error(errc::invalid_argument,
@@ -161,8 +203,8 @@ namespace crimson {
 	auto& m = attarray[(unsigned)ns];
 
 	try {
-	  boost::range::for_each(
-	    attrpairs,
+	  std::for_each(
+	    attrpairs->begin(), attrpairs->end(),
 	    [&m](pair<string, const_buffer>& attrpair) {
 	      auto& attr = attrpair.first;
 	      auto& val = attrpair.second;
@@ -187,7 +229,13 @@ namespace crimson {
 	return make_ready_future<>();
       }
 
-      future<> Object::rmattr(attr_ns ns, string&& attr) {
+      future<> Object::rmattr(attr_ns ns, string attr) {
+	if (!local()) {
+	  return smp::submit_to(
+	    cpu, [this, ns, attr = std::move(attr)] () mutable {
+	      return rmattr(ns, attr);
+	    });
+	}
 	if (ns >= attr_ns::END)
 	  return make_exception_future<>(
 	    std::system_error(errc::invalid_argument,
@@ -204,8 +252,13 @@ namespace crimson {
 	return make_ready_future<>();
       }
 
-      future<> Object::rmattrs(
-	attr_ns ns, std::vector<string>&& attrs) {
+      future<> Object::rmattrs(attr_ns ns, held_span<string> attrs) {
+	if (!local()) {
+	  return smp::submit_to(
+	    cpu, [this, ns, attrs = std::move(attrs)] () mutable {
+	      return rmattrs(ns, std::move(attrs));
+	    });
+	}
 	if (ns >= attr_ns::END)
 	  return make_exception_future<>(
 	    std::system_error(errc::invalid_argument,
@@ -214,7 +267,9 @@ namespace crimson {
 	auto& m = attarray[(unsigned)ns];
 
 	try {
-	  boost::range::for_each(attrs, [&m](const string& attr) {
+	  std::for_each(
+	    attrs->begin(), attrs->end(),
+	    [&m](const string& attr) {
 	      auto i = m.find(attr);
 	      if (i == m.end())
 		throw std::system_error(errc::no_such_attribute_key,
@@ -229,55 +284,64 @@ namespace crimson {
       }
 
       /// TODO actually honor to_return parameter and implement cursor logic
-      future<std::vector<string>, optional<AttrCursorRef>>
+      future<held_span<string>, optional<AttrCursorRef>>
 	Object::enumerate_attr_keys(attr_ns ns, optional<AttrCursorRef> cursor,
 				    size_t to_return) const {
+	if (!local()) {
+	  return smp::submit_to(
+	    cpu, [this, ns, to_return, cursor = std::move(cursor)] () mutable {
+	      return enumerate_attr_keys(ns, std::move(cursor), to_return);
+	    });
+	}
 	if (ns >= attr_ns::END)
 	  return make_exception_future<
-	    std::vector<string>, optional<AttrCursorRef>>(
+	    held_span<string>, optional<AttrCursorRef>>(
 	      std::system_error(errc::invalid_argument,
 				"Invalid attribute namespace"s));
 
 	auto& m = attarray[(unsigned)ns];
 
-	std::vector<string> out;
-	out.reserve(m.size());
+	auto out = make_unique<std::vector<string>>();
+	out->reserve(m.size());
 
-	boost::range::transform(m, out.begin(), [](const auto& kv) {
+	boost::range::transform(m, out->begin(), [](const auto& kv) {
 	    return kv.first;
 	  });
 
 	return make_ready_future<
-	  std::vector<string>, optional<AttrCursorRef>>(
+	  held_span<string>, optional<AttrCursorRef>>(
 	    std::move(out), nullopt);
       }
 
       /// TODO actually honor to_return parameter and implement cursor logic
-      future<std::vector<pair<string, const_buffer>>,
+      future<held_span<pair<string, const_buffer>>,
 	     optional<AttrCursorRef>> Object::enumerate_attr_kvs(
-	       attr_ns ns,
-	       optional<AttrCursorRef> cursor,
+	       attr_ns ns, optional<AttrCursorRef> cursor,
 	       size_t to_return) const {
+	if (!local()) {
+	  return smp::submit_to(
+	    cpu, [this, ns, to_return, cursor = std::move(cursor)] () mutable {
+	      return enumerate_attr_kvs(ns, std::move(cursor), to_return);
+	    });
+	}
 	if (ns >= attr_ns::END)
 	  return make_exception_future<
-	    std::vector<pair<string, const_buffer>>, optional<AttrCursorRef>>(
+	    held_span<pair<string, const_buffer>>, optional<AttrCursorRef>>(
 	      std::system_error(errc::invalid_argument,
 				"Invalid attribute namespace"s));
 
 	auto& m = attarray[(unsigned)ns];
 
-	std::vector<pair<string, const_buffer>> out;
-	out.reserve(m.size());
+	auto out = std::make_unique<std::vector<pair<string, const_buffer>>>();
+	out->reserve(m.size());
 
-	boost::range::transform(m, out.begin(), [](const auto& kv) {
-	    return std::make_pair(kv.first,
-				  const_buffer(
-				    kv.second->c_str(), kv.second->size(),
-				    make_object_deleter(kv.second)));
+	boost::range::transform(m, out->begin(), [](const auto& kv) {
+	    return std::make_pair(
+	      kv.first, make_const_buffer(kv.second));
 	  });
 
 	return make_ready_future<
-	  std::vector<pair<string, const_buffer>>, optional<AttrCursorRef>>(
+	  held_span<pair<string, const_buffer>>, optional<AttrCursorRef>>(
 	    std::move(out), nullopt);
       }
     } // namespace mem

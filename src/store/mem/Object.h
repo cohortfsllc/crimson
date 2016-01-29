@@ -54,7 +54,7 @@ namespace crimson {
 		   (unsigned)attr_ns::END> attarray;
 	string omap_header;
 
-	bool in_range(const Range& range) const {
+	bool in_range(const Range range) const {
 	  return (range.offset + range.length <= data_len);
 	}
 
@@ -62,42 +62,41 @@ namespace crimson {
 	  return engine().cpu_id() == cpu;
 	}
 
-	Object(CollectionRef&& _coll, string&& _oid)
+	Object(CollectionRef _coll, string _oid)
 	  : crimson::store::Object(std::move(_coll), std::move(_oid)),
 	    cpu(xxHash()(oid) % smp::count) {}
 
 	/// Read data from an object
-	future<IovecRef> read(const Range& r) const override;
+	future<IovecRef> read(const Range r) const override;
 	/// Write data to an offset within an object
-	future<> write(IovecRef&& iov) override;
+	future<> write(IovecRef iov) override;
 	/// Zero out the indicated byte range within an object.
 	///
 	/// \note For the memstore, zero is equivalent to hole_punch,
 	/// except that zero will not throw store::errc::out_of_range
-	future<> zero(const Range& range) override;
+	future<> zero(const Range range) override;
 	/// Punch a hole in the object of the given dimension
-	future<> hole_punch(const Range& range) override;
+	future<> hole_punch(const Range range) override;
 	/// Truncate an object.
 	future<> truncate(const Length length) override;
 	/// XXX Implement this when the Collection is better developed
 	future<> remove() = 0;
 	/// Get a single attribute value
-	future<const_buffer> getattr(
-	  attr_ns ns, string&& attr) const override;
+	future<const_buffer> getattr(attr_ns ns, string attr) const override;
 	/// Get some attribute values
-	future<std::vector<const_buffer>> getattrs(
-	  attr_ns ns, std::vector<string>&& attrs) const override;
+	future<held_span<const_buffer>> getattrs(
+	  attr_ns ns, held_span<string> attrs) const override;
 	/// Set a single attribute
-	future<> setattr(attr_ns ns, string&& attr,
-			 const_buffer&& val) override;
+	future<> setattr(attr_ns ns, string attr,
+			 const_buffer val) override;
 	/// Sets attributes
-	future<> setattrs(
-	  attr_ns ns,
-	  std::vector<pair<string, const_buffer>>&& attrpairs) override;
+	future<> setattrs(attr_ns ns,
+			  held_span<pair<string,
+			  const_buffer>> attrpairs) override;
 	/// Remove an attribute
-	virtual future<> rmattr(attr_ns ns, string&& attr) override;
+	virtual future<> rmattr(attr_ns ns, string attr) override;
 	/// Remove several attributes
-	future<> rmattrs(attr_ns ns, std::vector<string>&& attr) override;
+	future<> rmattrs(attr_ns ns, held_span<string> attr) override;
 	/// Remove attributes in an overcomplicated way
 	///
 	/// Not supported for memstore right now
@@ -107,11 +106,11 @@ namespace crimson {
 	  throw std::system_error(errc::operation_not_supported);
 	}
 	/// Enumerate attributes (just the names)
-	future<std::vector<string>, optional<AttrCursorRef>>
+	future<held_span<string>, optional<AttrCursorRef>>
 	  enumerate_attr_keys(attr_ns ns, optional<AttrCursorRef> cursor,
 			      size_t to_return) const override;
 	/// Enumerate attributes (key/value)
-	future<std::vector<pair<string, const_buffer>>,
+	future<held_span<pair<string, const_buffer>>,
 	       optional<AttrCursorRef>> enumerate_attr_kvs(
 		 attr_ns ns, optional<AttrCursorRef> cursor,
 		 size_t to_return) const override;
@@ -179,7 +178,8 @@ namespace crimson {
 	/// \param[in] range Range of object to query
 	///
 	/// \see hole_punch
-	virtual future<std::vector<Range>> get_extents(const Range& range) const = 0;
+	virtual future<held_span<Range>> get_extents(
+	  const Range range) const = 0;
 	/// Move object from one collection to another
 	///
 	/// \note This is used by Ceph's recovery logic, to move objects
