@@ -228,6 +228,20 @@ namespace crimson {
       /// enumeration order for attributes.
       virtual future<AttrCursorRef> attr_cursor(attr_ns ns, string attr) const;
 
+      /// Get the object "header"
+      ///
+      /// Ceph object stores have an additional piece of data, an
+      /// 'OMAP Header' that is read or written in its entirety in a
+      /// single operation.
+      ///
+      /// \see set_header
+      virtual future<const_buffer> get_header() const = 0;
+      /// Set the object "header"
+      ///
+      /// param[in] header Header to set
+      /// \see get_header
+      virtual future<> set_header(const_buffer header) = 0;
+
       /// Clone this object into another object
       ///
       /// Low-cost (e.g., O(1)) cloning (if supported) is best, but
@@ -258,19 +272,6 @@ namespace crimson {
       virtual future<>set_alloc_hint(const Length obj_size,
 				     const Length write_size) = 0;
 
-      /// Get the object "header"
-      ///
-      /// Ceph object stores have an additional piece of data, an
-      /// 'OMAP Header' that is read or written in its entirety in a
-      /// single operation.
-      ///
-      /// \see set_header
-      virtual future<const_buffer> get_header() const = 0;
-      /// Set the object "header"
-      ///
-      /// param[in] header Header to set
-      /// \see get_header
-      virtual future<> set_header(const_buffer header) = 0;
       /// Get allocated extents within a range
       ///
       /// Return a list of extents that contain actual data within a

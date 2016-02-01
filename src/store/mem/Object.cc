@@ -344,6 +344,27 @@ namespace crimson {
 	  held_span<pair<string, const_buffer>>, optional<AttrCursorRef>>(
 	    std::move(out), nullopt);
       }
+
+      future<const_buffer> Object::get_header() const {
+	if (!local()) {
+	  return smp::submit_to(cpu, [this] { return get_header(); });
+	}
+
+	return make_ready_future<const_buffer>
+	  (make_const_buffer(omap_header));
+      }
+
+      future<> Object::set_header(const_buffer header) {
+	if (!local()) {
+	  return smp::submit_to(
+	    cpu, [this, header = std::move(header)] () mutable {
+	      return set_header(std::move(header)); });
+	}
+
+	omap_header = make_lw_shared<string>(header.get(),
+					     header.size());
+	return make_ready_future<>();
+      }
     } // namespace mem
   } // namespace store
 } // namespace crimson

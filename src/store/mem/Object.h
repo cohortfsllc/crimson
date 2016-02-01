@@ -52,7 +52,7 @@ namespace crimson {
 	Length data_len;
 	std::array<std::map<string,lw_shared_ptr<string>>,
 		   (unsigned)attr_ns::END> attarray;
-	string omap_header;
+	lw_shared_ptr<string> omap_header;
 
 	bool in_range(const Range range) const {
 	  return (range.offset + range.length <= data_len);
@@ -117,28 +117,21 @@ namespace crimson {
 
 	/// Get cursor for attribute key
 	///
-	/// This function gives a cursor that will continue an
-	/// enumeration as if a previous enumeration had ended
-	/// just before returning `attr`.
-	///
-	/// \note Not supported on stores without a well-defined
-	/// enumeration order for attributes.
-	virtual future<AttrCursorRef> attr_cursor(attr_ns ns, string attr) const;
+	/// Not supported on this store.
+	virtual future<AttrCursorRef> attr_cursor(attr_ns ns,
+						  string attr) const {
+	  return make_exception_future<AttrCursorRef>(
+	    std::system_error(errc::operation_not_supported));
+	}
+
+	/// Get the object "header"
+	future<const_buffer> get_header() const override;
+	/// Set the object "header"
+	future<> set_header(const_buffer header) override;
 
 	/// Clone this object into another object
-	///
-	/// Low-cost (e.g., O(1)) cloning (if supported) is best, but
-	/// fallback to an O(n) copy is allowed.  All object data are
-	/// cloned.
-	///
-	/// This clones everything, attributes, omap header, etc.
-	///
-	/// \param[in] dest Destination object
-	///
-	/// \note Objects must be in the same collection.
-	///
-	/// \see clone_range
-	virtual future<> clone(Object& dest_obj) const = 0;
+	virtual future<> clone(Object& dest_obj) const;
+
 	/// Clone a byte range from one object to another
 	///
 	/// This only affects the data portion of the destination object.
@@ -155,19 +148,6 @@ namespace crimson {
 	virtual future<>set_alloc_hint(Length obj_size,
 				       Length write_size) = 0;
 
-	/// Get the object "header"
-	///
-	/// Ceph object stores have an additional piece of data, an
-	/// 'OMAP Header' that is read or written in its entirety in a
-	/// single operation.
-	///
-	/// \see set_header
-	virtual future<const_buffer> get_header() const = 0;
-	/// Set the object "header"
-	///
-	/// param[in] header Header to set
-	/// \see get_header
-	virtual future<> set_header(const_buffer header) = 0;
 	/// Get allocated extents within a range
 	///
 	/// Return a list of extents that contain actual data within a
@@ -203,9 +183,6 @@ namespace crimson {
 	virtual future<>move_to_collection(Collection& dest_coll,
 					   const string& dest_oid) = 0;
 	/// Commit all outstanding modifications on this object
-	///
-	/// This function acts as a barrier. It will complete when all
-	/// outstanding operations are complete and written to stable storage.
 	virtual future<> commit() = 0;
       };
     } // namespace mem
