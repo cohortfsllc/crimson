@@ -47,7 +47,18 @@ namespace crimson {
     using ObjectRef = foreign_ptr<boost::intrusive_ptr<Object>>;
 
 
-    class OidCursor;
+    class OidCursor {
+      friend void intrusive_ptr_add_ref(OidCursor* a);
+      friend void intrusive_ptr_release(OidCursor* a);
+      virtual void get() = 0;
+      virtual void put() = 0;
+    };
+    void intrusive_ptr_add_ref(OidCursor* o) {
+      o->get();
+    }
+    void intrusive_ptr_release(OidCursor* o) {
+      o->put();
+    }
     using OidCursorRef = foreign_ptr<boost::intrusive_ptr<OidCursor>>;
     /// A collection is a grouping of objects.
     ///
@@ -55,7 +66,7 @@ namespace crimson {
     /// individual object, a collection also has a set of xattrs.
 
     class Collection {
-    private:
+    protected:
       Store& store;
       const string cid;
 
@@ -79,7 +90,8 @@ namespace crimson {
       Collection(Collection&&) = delete;
       Collection& operator =(Collection&&) = delete;
 
-      virtual unsigned get_cpu(const string& oid) const = 0;
+      virtual unsigned on_cpu() const = 0;
+      virtual unsigned cpu_for(const string& oid) const = 0;
 
       const string& get_cid() const {
 	return cid;

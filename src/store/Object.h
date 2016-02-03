@@ -49,15 +49,15 @@ namespace crimson {
     enum class attr_ns { xattr, omap, END };
 
     class AttrCursor {
-      friend void intrusive_ptr_add_ref(AttrCursor* a);
-      friend void intrusive_ptr_release(AttrCursor* a);
-      virtual void get() = 0;
-      virtual void put() = 0;
+      friend void intrusive_ptr_add_ref(const AttrCursor* a);
+      friend void intrusive_ptr_release(const AttrCursor* a);
+      virtual void get() const = 0;
+      virtual void put() const = 0;
     };
-    void intrusive_ptr_add_ref(AttrCursor* a) {
+    void intrusive_ptr_add_ref(const AttrCursor* a) {
       a->get();
     }
-    void intrusive_ptr_release(AttrCursor* a) {
+    void intrusive_ptr_release(const AttrCursor* a) {
       a->put();
     }
     using AttrCursorRef = foreign_ptr<boost::intrusive_ptr<AttrCursor>>;
@@ -70,6 +70,14 @@ namespace crimson {
       CollectionRef coll;
       const string oid;
 
+      virtual void ref() const = 0;
+      virtual void unref() const = 0;
+      friend inline void intrusive_ptr_add_ref(const Object* o) {
+	o->ref();
+      }
+      friend inline void intrusive_ptr_release(const Object* o) {
+	o->unref();
+      }
     public:
       explicit Object(CollectionRef _coll,
 		      string _oid)
@@ -90,11 +98,11 @@ namespace crimson {
 
       friend class Collection;
 
-      /// Read data from offset within an object
+      /// CPU owning this object
       ///
-      /// \todo Ceph ObjectStore specifies that reads past the end of
-      /// an object return 0 rather than error. Do we want to retain
-      /// that functionality?
+      /// Return the CPU no which all methods for this object will be executed.
+      virtual unsigned on_cpu() const = 0;
+      /// Read data from offset within an object
       ///
       /// \param[in] range Range to read
       ///

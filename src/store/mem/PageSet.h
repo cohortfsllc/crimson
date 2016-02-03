@@ -186,7 +186,7 @@ namespace crimson {
 
 	  // What CPU should a given slice run on?
 	  unsigned slice_cpu(std::size_t slice) const {
-	    return (slice + engine().cpu_id()) % partitions.size();
+	    return slice  % smp::count;
 	  }
 
 	  future<> write(IovecRef&& iov) noexcept;

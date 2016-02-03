@@ -46,13 +46,39 @@ namespace crimson {
   namespace store {
     /// Memory based object store
     namespace mem {
-      class Object : crimson::store::Object {
+      class Object;
+      using MemObjRef = boost::intrusive_ptr<Object>;
+      namespace _ {
+	using boost::intrusive::slist_base_hook;
+	using boost::intrusive::link_mode;
+	using boost::intrusive::normal_link;
+	using boost::intrusive::cache_last;
+	struct AsyncMutation : public slist_base_hook<link_mode<normal_link>> {
+	  MemObjRef object;
+	  bool commit;
+	  promise<> p;
+
+	  AsyncMutation(Object* o);
+	  ~AsyncMutation();
+	};
+	using slist = boost::intrusive::slist<AsyncMutation,
+					      cache_last<true>>;
+      } // namespace _
+
+      class Collection;
+      class Object : public crimson::store::Object {
+	friend Collection;
+	friend _::AsyncMutation;
+	mutable std::size_t ref_cnt = 0;
 	const unsigned cpu;
 	_::PageSet data;
 	Length data_len;
 	std::array<std::map<string,lw_shared_ptr<string>>,
 		   (unsigned)attr_ns::END> attarray;
 	lw_shared_ptr<string> omap_header;
+	std::map<string, MemObjRef> slice;
+	const std::map<string, MemObjRef>::iterator iter;
+	_::slist mutations;
 
 	bool in_range(const Range range) const {
 	  return (range.offset + range.length <= data_len);
@@ -62,10 +88,24 @@ namespace crimson {
 	  return engine().cpu_id() == cpu;
 	}
 
-	Object(CollectionRef _coll, string _oid)
+	Object(CollectionRef _coll, string _oid,
+	       std::map<string, MemObjRef>& _slice)
 	  : crimson::store::Object(std::move(_coll), std::move(_oid)),
-	    cpu(xxHash()(oid) % smp::count) {}
+	    cpu(xxHash()(oid) % smp::count), slice(_slice),
+	    iter((slice.emplace(
+		    std::piecewise_construct,
+		    std::forward_as_tuple(oid),
+		    std::forward_as_tuple(MemObjRef(this)))).first) {}
 
+      public:
+
+	void ref() const override;
+	void unref() const override;
+
+	/// CPU owning this object
+	unsigned on_cpu() const override {
+	  return cpu;
+	}
 	/// Read data from an object
 	future<IovecRef> read(const Range r) const override;
 	/// Write data to an offset within an object
@@ -79,8 +119,8 @@ namespace crimson {
 	future<> hole_punch(const Range range) override;
 	/// Truncate an object.
 	future<> truncate(const Length length) override;
-	/// XXX Implement this when the Collection is better developed
-	future<> remove() = 0;
+	/// Removes the object from the collection map
+	future<> remove() override;
 	/// Get a single attribute value
 	future<const_buffer> getattr(attr_ns ns, string attr) const override;
 	/// Get some attribute values
@@ -103,7 +143,8 @@ namespace crimson {
 	future<> rmattr_range(attr_ns ns,
 			      AttrCursorRef lb,
 			      AttrCursorRef ub) override {
-	  throw std::system_error(errc::operation_not_supported);
+	  return make_exception_future<>(
+	    std::system_error(errc::operation_not_supported));
 	}
 	/// Enumerate attributes (just the names)
 	future<held_span<string>, optional<AttrCursorRef>>
@@ -130,23 +171,30 @@ namespace crimson {
 	future<> set_header(const_buffer header) override;
 
 	/// Clone this object into another object
-	virtual future<> clone(Object& dest_obj) const;
+	future<> clone(store::Object& dest_obj) const override {
+	  return make_exception_future<>(
+	    std::system_error(errc::operation_not_supported));
+	}
 
 	/// Clone a byte range from one object to another
 	///
 	/// This only affects the data portion of the destination object.
 	///
 	/// \see clone
-	virtual future<> clone_range(Range src_range,
-				     Object& dest,
-				     Offset dest_offset) const = 0;
+	future<> clone_range(const Range src_range,
+			     store::Object& dest,
+			     const Offset dest_offset) const override {
+	  return make_exception_future<>(
+	    std::system_error(errc::operation_not_supported));
+	 }
 
 	/// Inform store of future allocation plans
 	///
-	/// @param[in] obj_size   Expected total size of object
-	/// @param[in] write_size Expected size of write operations
-	virtual future<>set_alloc_hint(Length obj_size,
-				       Length write_size) = 0;
+	/// A no-op for mem::Store
+	future<>set_alloc_hint(Length obj_size,
+			       Length write_size) {
+	  return make_ready_future<>();
+	}
 
 	/// Get allocated extents within a range
 	///
@@ -158,8 +206,11 @@ namespace crimson {
 	/// \param[in] range Range of object to query
 	///
 	/// \see hole_punch
-	virtual future<held_span<Range>> get_extents(
-	  const Range range) const = 0;
+	future<held_span<Range>> get_extents(
+	  const Range range) const override {
+	  return make_exception_future<held_span<Range>>(
+	    std::system_error(errc::operation_not_supported));
+	}
 	/// Move object from one collection to another
 	///
 	/// \note This is used by Ceph's recovery logic, to move objects
@@ -180,10 +231,13 @@ namespace crimson {
 	/// \param[in] dest_oid  OID it should have there
 	///
 	/// \see split_collection
-	virtual future<>move_to_collection(Collection& dest_coll,
-					   const string& dest_oid) = 0;
+	future<>move_to_collection(store::Collection& dest_coll,
+				   string dest_oid) override {
+	  return make_exception_future<>(
+	    std::system_error(errc::operation_not_supported));
+	}
 	/// Commit all outstanding modifications on this object
-	virtual future<> commit() = 0;
+	future<> commit() override;
       };
     } // namespace mem
   } // namespace store

@@ -1,6 +1,7 @@
 set(store_mem_srcs
   Store.cc
   PageSet.cc
+  Collection.cc
   Object.cc)
 add_library(store_mem OBJECT ${store_mem_srcs})
 target_compile_options(store_mem PUBLIC ${SEASTAR_COMPILE_OPTIONS})

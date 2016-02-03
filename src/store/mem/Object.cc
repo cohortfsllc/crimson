@@ -40,6 +40,32 @@ namespace crimson {
   namespace store {
     /// Memory based object store
     namespace mem {
+      namespace _ {
+	AsyncMutation::AsyncMutation(Object* o)
+	  : object(o) {
+	  object->mutations.push_back(*this);
+	}
+
+	AsyncMutation::~AsyncMutation() {
+	  auto i = object->mutations.iterator_to(*this);
+	  auto j = i;
+	  ++j;
+
+	  if (j != object->mutations.end() && j->commit &&
+	      i == object->mutations.begin())
+	    j->p.set_value();
+
+	  object->mutations.erase(i);
+	}
+      } // namespace _
+      void Object::ref() const {
+	++ref_cnt;
+      }
+      void Object::unref() const {
+	if (--ref_cnt == 0)
+	  delete this;
+      }
+
       future<IovecRef> Object::read(const Range r) const {
 	if (!local()) {
 	  return smp::submit_to(
@@ -49,7 +75,11 @@ namespace crimson {
 	  return make_exception_future<IovecRef>(
 	    std::system_error(errc::out_of_range));
 	else
-	  return data.read(r);
+	  return seastar::do_with(
+	    boost::intrusive_ptr<const Object>(this),
+	    [this, r](boost::intrusive_ptr<const Object>&) mutable {
+	      return data.read(r);
+	    });
       }
 
       future<> Object::write(IovecRef iov) {
@@ -61,7 +91,16 @@ namespace crimson {
 	    });
 	}
 
-	return data.write(std::move(iov));
+	auto i = iov->data.end();
+	--i;
+	auto writelen = (i->first + i->second.size());
+	if (data_len < writelen)
+	  data_len = writelen;
+	return seastar::do_with(
+	  make_unique<_::AsyncMutation>(this),
+	  [this, iov = std::move(iov)](unique_ptr<_::AsyncMutation>&) mutable {
+	    return data.write(std::move(iov));
+	  });
       }
 
       future<> Object::zero(const Range r) {
@@ -72,7 +111,12 @@ namespace crimson {
 
 	if (data_len < r.offset + r.length)
 	  data_len = r.offset + r.length;
-	return data.hole_punch(r);
+
+	return seastar::do_with(
+	  make_unique<_::AsyncMutation>(this),
+	  [this, r](unique_ptr<_::AsyncMutation>&) {
+	    return data.hole_punch(r);
+	  });
       }
 
       future<> Object::hole_punch(const Range r) {
@@ -85,7 +129,11 @@ namespace crimson {
 	  return make_exception_future(std::system_error(
 					 errc::out_of_range));
 	else
-	  return data.hole_punch(r);
+	  return seastar::do_with(
+	    make_unique<_::AsyncMutation>(this),
+	    [this, r](unique_ptr<_::AsyncMutation>&) {
+	      return data.hole_punch(r);
+	    });
       }
 
       future<> Object::truncate(const Length l) {
@@ -93,8 +141,23 @@ namespace crimson {
 	  return smp::submit_to(
 	    cpu, [this, l]{ return truncate(l); });
 	}
-	return data.hole_punch(
-	  Range(l, std::numeric_limits<uint64_t>::max() - l));
+	if (data_len > l) {
+	  data_len = l;
+	  return seastar::do_with(
+	    make_unique<_::AsyncMutation>(this),
+	    [this,
+	     r = Range(l, std::numeric_limits<uint64_t>::max() - 1)](
+	       unique_ptr<_::AsyncMutation>&) {
+	      return data.hole_punch(r);
+	    });
+	} else {
+	  return make_ready_future<>();
+	}
+      }
+
+      future<> Object::remove() {
+	slice.erase(iter);
+	return make_ready_future<>();
       }
 
       future<const_buffer> Object::getattr(attr_ns ns, string attr) const {
@@ -365,6 +428,15 @@ namespace crimson {
 					     header.size());
 	return make_ready_future<>();
       }
-    } // namespace mem
+
+      future<> Object::commit() {
+	return seastar::do_with(
+	  make_unique<_::AsyncMutation>(this),
+	  [](unique_ptr<_::AsyncMutation>& a) {
+	    a->commit = true;
+	    return a->p.get_future();
+	  });
+      }
+   } // namespace mem
   } // namespace store
 } // namespace crimson

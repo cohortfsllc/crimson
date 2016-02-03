@@ -34,77 +34,82 @@
 
 #include <utility>
 
+#include "crimson.h"
+#include "store/Collection.h"
+#include "Object.h"
+
 namespace crimson {
   /// Storage interface
   namespace store {
-    namspace mem {
+    namespace mem {
       /// A collection is a grouping of objects.
       ///
       /// Collections have names and can be enumerated in order.  Like
       /// an individual object, a collection also has a set of xattrs.
+      class Collection : public crimson::store::Collection {
+	std::vector<foreign_ptr<unique_ptr<
+	  std::map<string, MemObjRef>>>> maps;
+	const unsigned cpu;
+	size_t ref_cnt = 0;
 
-      class Collection : public crimson::store::Collection,
-			 public slab_item_base {
-      private:
-	crimson::store::mem::Store& mstore() {
-	  return static_cast<MemStore&>(store);
+	bool local() const {
+	  return engine().cpu_id() == cpu;
 	}
 
-	std::vector<foreign_ptr<std::unique_ptr<MemObject::cache>> trees;
-
-	Collection(uint32_t _slab_page_index, Store& _store, sstring _cid)
-	  : Collection(_slab_page_index, _store,  _cid) {
-	  trees.resize(smp::count);
-	}
-      public:
-	static future<CollectionRef> make(Store& _store, sstring _cid) {
-	  auto cpu = get_cpu(_cid);
-	  Expects(cpu == engine().cpu_id());
-	  auto slab = _store.collection_slab(cpu);
-	  std::unique_ptr<NihilCollection> new_item(
-	  slab->create(sizeof(NihilCollection), _store, _cid),
-	  [slab](NihilCollection* c) {
-	    slab->free(c);
-	  });
-	  return parallel_for_each(
-	    boost::irange<unsigned>(0, smp::count),
-	    [new_item] (unsigned c) mutable {
-	      return smp::submit_to(c, [this, args] () mutable {
-		  trees[engine().cpu_id()] =
-		    make_foreign(std::make_unique<NihilObject::cache>());
-		});
-	    }).then([new_item] {
-		return make_ready_future<CollectionRef>(new_item.release());
-	      });
-	}
-
-	virtual ~MemCollection() = default;
-
-	Collection(const MemCollection&) = delete;
-	Collection& operator =(const MemCollection&) = delete;
-	Collection(MemCollection&&) = delete;
-	Collection& operator =(MemCollection&&) = delete;
-
-	unsigned get_cpu(const sstring& oid) const overrides {
-	  xxHash(oid) % smp::count;
-	}
-
-      private:
-	static ObjectRef get_objectref_local(const sstring& oid,
-					     Object::cache& tree,
-					     CollectionRef&& me) const {}
-      public:
-	future<ObjectRef> get_objectref(const sstring& oid) const overrides {
-	  auto cpu = get_cpu(oid);
-	  if (cpu == engine.cpu_id()) {
-	    return make_ready_future<ObjectRef>(
-	      get_objectref_local(oid, trees[cpu], CollectionRef(this)));
-	  } else {
-	    return smp::submit_to(cpu, [c = CollectionRef(this)] mutable {
-		trees[engine().cpu_id()] =
-		  make_foreign(std::make_unique<NihilObject::cache>());
-	      });
+	Collection(Store& _store, string _cid)
+	  : crimson::store::Collection(_store, std::move(_cid)),
+	    cpu(xxHash()(cid) % smp::count) {
+	  auto maker = [] {
+	    return make_foreign(make_unique<std::map<string,MemObjRef>>());
+	  };
+	  maps.reserve(smp::count);
+	  for (unsigned i = 0; i < smp::count; ++i) {
+	    if (i == engine().cpu_id()) {
+	      maps[i] = maker();
+	    } else {
+	      maps[i] = smp::submit_to(i, [&maker] { return maker(); }).get0();
+	    }
 	  }
+	}
+      public:
+
+	virtual ~Collection() = default;
+
+	Collection(const Collection&) = delete;
+	Collection& operator =(const Collection&) = delete;
+	Collection(Collection&&) = delete;
+	Collection& operator =(Collection&&) = delete;
+
+
+      public:
+
+	unsigned on_cpu() const override;
+
+	unsigned cpu_for(const string& oid) const override {
+	  return xxHash()(oid) % smp::count;
+	}
+
+	void ref() override;
+	void unref() override;
+
+	/// Ensure the existance of an object in a collection
+	future<ObjectRef> create(string oid, bool excl = false) override;
+	/// Remove this collection
+	virtual future<>remove() = 0;
+	/// Split this collection
+	virtual future<> split_collection(
+	  Collection& dest,
+	  cxx_function::unique_function<bool(const string& oid)> pred) = 0;
+	/// Enumerate objects in a collection
+	virtual future<std::vector<string>, OidCursorRef> enumerate_objects(
+	  optional<OidCursorRef> cursor,
+	  size_t to_return) const = 0;
+	/// Get cursor for a given object
+	///
+	/// Not supported on MemStore (at least at the moment)
+	future<OidCursorRef> obj_cursor(string oid) const override {
+	  return make_exception_future<OidCursorRef>(
+	    std::system_error(errc::operation_not_supported));
 	}
       };
     } // namespace mem
