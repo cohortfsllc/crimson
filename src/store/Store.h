@@ -64,6 +64,7 @@ namespace crimson {
       object_exists,
       operation_not_supported,
       invalid_handle,
+      invalid_cursor,
       out_of_range,
       invalid_argument
     };

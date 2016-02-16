@@ -311,6 +311,17 @@ namespace crimson {
 	    std::system_error(errc::no_such_attribute_key,
 			      "'"s + (std::string)attr +
 			      "' could not be found"s));
+	auto j = attrcursors.begin();
+	while (j != attrcursors.end()) {
+	  if (j->i == i) {
+	    auto k = j;
+	    ++j;
+	    k->valid = false;
+	    attrcursors.erase(k);
+	  } else {
+	    ++j;
+	  }
+	}
 	m.erase(i);
 	return make_ready_future<>();
       }
@@ -346,7 +357,20 @@ namespace crimson {
 	return make_ready_future<>();
       }
 
-      /// TODO actually honor to_return parameter and implement cursor logic
+      AttrCursorRef Object::cursor_ref(attrmap::const_iterator i) const {
+	auto j = attrcursors.begin();
+	while (j != attrcursors.end()) {
+	  if (j->i == i) {
+	    return { &(*j) };
+	  } else {
+	    ++j;
+	  }
+	}
+	auto c = make_unique<AttrCursor>(i);
+	attrcursors.push_front(*c);
+	return AttrCursorRef(c.release());
+      }
+
       future<held_span<string>, optional<AttrCursorRef>>
 	Object::enumerate_attr_keys(attr_ns ns, optional<AttrCursorRef> cursor,
 				    size_t to_return) const {
@@ -365,18 +389,36 @@ namespace crimson {
 	auto& m = attarray[(unsigned)ns];
 
 	auto out = make_unique<std::vector<string>>();
-	out->reserve(m.size());
+	out->reserve(std::min(to_return, m.size()));
 
-	boost::range::transform(m, out->begin(), [](const auto& kv) {
-	    return kv.first;
-	  });
+	std::remove_reference_t<decltype(m)>::const_iterator k;
+	if (cursor) {
+	  auto& c = static_cast<AttrCursor&>(*(*cursor));
+	  if (c.valid)
+	    k = c.i;
+	  else
+	    return make_exception_future<
+	      held_span<string>, optional<AttrCursorRef>>(
+		std::system_error(errc::invalid_cursor));
+	} else {
+	  k = m.begin();
+	}
+
+	optional<AttrCursorRef> rc;
+
+	while (k != m.end()) {
+	  if (out->size() == to_return) {
+	    rc = cursor_ref(k);
+	    break;
+	  }
+	  out->push_back(k->first);
+	}
 
 	return make_ready_future<
 	  held_span<string>, optional<AttrCursorRef>>(
-	    std::move(out), nullopt);
+	    std::move(out), std::move(rc));
       }
 
-      /// TODO actually honor to_return parameter and implement cursor logic
       future<held_span<pair<string, const_buffer>>,
 	     optional<AttrCursorRef>> Object::enumerate_attr_kvs(
 	       attr_ns ns, optional<AttrCursorRef> cursor,
@@ -396,16 +438,38 @@ namespace crimson {
 	auto& m = attarray[(unsigned)ns];
 
 	auto out = std::make_unique<std::vector<pair<string, const_buffer>>>();
-	out->reserve(m.size());
+	out->reserve(std::min(to_return, m.size()));
 
-	boost::range::transform(m, out->begin(), [](const auto& kv) {
-	    return std::make_pair(
-	      kv.first, make_const_buffer(kv.second));
-	  });
+	std::remove_reference_t<decltype(m)>::const_iterator k;
+	if (cursor) {
+	  auto& c = static_cast<AttrCursor&>(*(*cursor));
+	  if (c.valid)
+	    k = c.i;
+	  else
+	    return make_exception_future<
+	      held_span<pair<string, const_buffer>>, optional<AttrCursorRef>>(
+		std::system_error(errc::invalid_cursor));
+	} else {
+	  k = m.begin();
+	}
+
+	optional<store::AttrCursorRef> rc;
+
+	while (k != m.end()) {
+	  if (out->size() == to_return) {
+	    rc = cursor_ref(k);
+	    break;
+	  }
+	  out->emplace_back(std::piecewise_construct,
+			    std::forward_as_tuple(k->first),
+			    std::forward_as_tuple(
+			      make_const_buffer(k->second)));
+	}
+
 
 	return make_ready_future<
 	  held_span<pair<string, const_buffer>>, optional<AttrCursorRef>>(
-	    std::move(out), nullopt);
+	    std::move(out), std::move(rc));
       }
 
       future<const_buffer> Object::get_header() const {

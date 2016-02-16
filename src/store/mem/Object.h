@@ -52,7 +52,9 @@ namespace crimson {
 	using boost::intrusive::slist_base_hook;
 	using boost::intrusive::link_mode;
 	using boost::intrusive::normal_link;
+	using boost::intrusive::auto_unlink;
 	using boost::intrusive::cache_last;
+	using boost::intrusive::constant_time_size;
 	struct AsyncMutation : public slist_base_hook<link_mode<normal_link>> {
 	  MemObjRef object;
 	  bool commit;
@@ -61,9 +63,32 @@ namespace crimson {
 	  AsyncMutation(Object* o);
 	  ~AsyncMutation();
 	};
-	using slist = boost::intrusive::slist<AsyncMutation,
-					      cache_last<true>>;
+	using mutslist = boost::intrusive::slist<AsyncMutation,
+						 cache_last<true>>;
+	struct AttrCursor : public store::AttrCursor,
+			    public slist_base_hook<link_mode<auto_unlink>> {
+	  std::size_t ref_cnt = 0;
+	  std::map<string, lw_shared_ptr<string>>::const_iterator i;
+	  bool valid = true;
+	  AttrCursor(std::map<string, lw_shared_ptr<string>>
+		     ::const_iterator _i)
+	    : i(_i) {}
+	  ~AttrCursor() {}
+	  void get() override {
+	    ++ref_cnt;
+	  }
+	  void put() override {
+	    if (--ref_cnt == 0)
+	      delete this;
+	  }
+	};
+	// I would really rather use a set, but std::map iterators can
+	// only be checked for equality, not compared.
+	using curslist = boost::intrusive::slist<AttrCursor,
+						 cache_last<false>,
+						 constant_time_size<false>>;
       } // namespace _
+      using _::AttrCursor;
 
       class Collection;
       class Object : public crimson::store::Object {
@@ -73,12 +98,15 @@ namespace crimson {
 	const unsigned cpu;
 	_::PageSet data;
 	Length data_len;
-	std::array<std::map<string,lw_shared_ptr<string>>,
-		   (unsigned)attr_ns::END> attarray;
+	using attrmap = std::map<string, lw_shared_ptr<string>>;
+	std::array<attrmap, (unsigned)attr_ns::END> attarray;
 	lw_shared_ptr<string> omap_header;
 	std::map<string, MemObjRef> slice;
 	const std::map<string, MemObjRef>::iterator iter;
-	_::slist mutations;
+	_::mutslist mutations;
+	mutable _::curslist attrcursors;
+
+	AttrCursorRef cursor_ref(attrmap::const_iterator i) const;
 
 	bool in_range(const Range range) const {
 	  return (range.offset + range.length <= data_len);
@@ -134,7 +162,7 @@ namespace crimson {
 			  held_span<pair<string,
 			  const_buffer>> attrpairs) override;
 	/// Remove an attribute
-	virtual future<> rmattr(attr_ns ns, string attr) override;
+	future<> rmattr(attr_ns ns, string attr) override;
 	/// Remove several attributes
 	future<> rmattrs(attr_ns ns, held_span<string> attr) override;
 	/// Remove attributes in an overcomplicated way

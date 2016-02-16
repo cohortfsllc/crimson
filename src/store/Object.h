@@ -49,15 +49,18 @@ namespace crimson {
     enum class attr_ns { xattr, omap, END };
 
     class AttrCursor {
-      friend void intrusive_ptr_add_ref(const AttrCursor* a);
-      friend void intrusive_ptr_release(const AttrCursor* a);
-      virtual void get() const = 0;
-      virtual void put() const = 0;
+      friend void intrusive_ptr_add_ref(AttrCursor* a);
+      friend void intrusive_ptr_release(AttrCursor* a);
+      virtual void get() = 0;
+      virtual void put() = 0;
+
+    public:
+      virtual ~AttrCursor() {} ;
     };
-    void intrusive_ptr_add_ref(const AttrCursor* a) {
+    void intrusive_ptr_add_ref(AttrCursor* a) {
       a->get();
     }
-    void intrusive_ptr_release(const AttrCursor* a) {
+    void intrusive_ptr_release(AttrCursor* a) {
       a->put();
     }
     using AttrCursorRef = foreign_ptr<boost::intrusive_ptr<AttrCursor>>;
