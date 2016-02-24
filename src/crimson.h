@@ -61,18 +61,20 @@ namespace crimson {
   using const_buffer = seastar::temporary_buffer<const char>;
   using temporary_buffer = seastar::temporary_buffer<char>;
 
-  const_buffer make_const_buffer(lw_shared_ptr<string>& s) {
-    return {s->c_str(), s->size(), seastar::make_object_deleter(
-	seastar::make_foreign(s)) };
-  }
+  namespace {
+    inline const_buffer make_const_buffer(lw_shared_ptr<string>& s) {
+      return {s->c_str(), s->size(), seastar::make_object_deleter(
+	  seastar::make_foreign(s)) };
+    }
 
-  // This is actually all right since where it's used there's no
-  // actual externally visible modification, and our concurrency model
-  // ensures we'll always be called on the processor that owns the
-  // reference count
-  const_buffer make_const_buffer(const lw_shared_ptr<string>& s) {
-    return {s->c_str(), s->size(), seastar::make_object_deleter(
-	make_foreign(const_cast<lw_shared_ptr<string>&>(s))) };
+    // This is actually all right since where it's used there's no
+    // actual externally visible modification, and our concurrency
+    // model ensures we'll always be called on the processor that owns
+    // the reference count
+    inline const_buffer make_const_buffer(const lw_shared_ptr<string>& s) {
+      return {s->c_str(), s->size(), seastar::make_object_deleter(
+	  make_foreign(const_cast<lw_shared_ptr<string>&>(s))) };
+    }
   }
 
   using seastar::now;

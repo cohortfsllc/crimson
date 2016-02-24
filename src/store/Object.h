@@ -56,13 +56,13 @@ namespace crimson {
 
     public:
       virtual ~AttrCursor() {} ;
+      friend void intrusive_ptr_add_ref(AttrCursor* a) {
+	a->get();
+      }
+      friend void intrusive_ptr_release(AttrCursor* a) {
+	a->put();
+      }
     };
-    void intrusive_ptr_add_ref(AttrCursor* a) {
-      a->get();
-    }
-    void intrusive_ptr_release(AttrCursor* a) {
-      a->put();
-    }
     using AttrCursorRef = foreign_ptr<boost::intrusive_ptr<AttrCursor>>;
 
     /// A handle for object storage operations

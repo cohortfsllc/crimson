@@ -121,25 +121,29 @@ namespace crimson {
 	  return make_ready_future<boost::uuids::uuid>(id);
 	}
 
+	/// Look up a collection
+	future<CollectionRef> lookup_collection(string cid) const override;
+
 	/// Make a collection
-	///
-	/// Create a new collection. The collection must not exist prior
-	/// to the call.
-	///
-	/// \param[in] cid Collection ID
-	future<CollectionRef>create_collection(string cid) override;
+	future<CollectionRef> create_collection(string cid) override;
 	/// Enumerate all collections in this store
 	///
 	/// \note Ceph ObjectStore just returns them all at once. Do we
 	/// think we'll need cursor-like logic the way we do for
 	/// attribute and object enumeration?
-	future<held_span<string>> enumerate_collections() const override;
+	future<held_span<string>> enumerate_collections() const override {
+	  return make_exception_future<held_span<string>>(
+	    std::system_error(errc::operation_not_supported));
+	}
 	/// Commit the entire Store
 	///
 	/// All of it. No questions asked. This function acts as a
 	/// barrier on all operations. No operations may begin until all
 	/// outstanding ones are completed and stored stably.
-	future<> commit() override;
+	future<> commit() override {
+	  return make_exception_future<>(
+	    std::system_error(errc::operation_not_supported));
+	}
       };
     } // namespace mem
   } // namespace store

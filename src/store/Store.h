@@ -52,8 +52,6 @@
 #include "common/held_span.h"
 
 namespace crimson {
-
-
   /// Storage interface
   namespace store {
     /// Error codes for the Store interface
@@ -71,42 +69,14 @@ namespace crimson {
       collection_not_empty
     };
 
-    class error_category : public std::error_category {
-      virtual const char* name() const noexcept;
-      virtual std::string message(int ev) const;
-      virtual std::error_condition default_error_condition(
-	int ev) const noexcept {
-	switch (static_cast<errc>(ev)) {
-	case errc::no_such_collection:
-	  return std::errc::no_such_file_or_directory;
-	case errc::no_such_object:
-	  return std::errc::no_such_file_or_directory;
-	case errc::no_such_attribute_key:
-	  return std::errc::no_such_file_or_directory;
-	case errc::collection_exists:
-	  return std::errc::file_exists;
-	case errc::object_exists:
-	  return std::errc::file_exists;
-	case errc::operation_not_supported:
-	  return std::errc::operation_not_supported;
-	case errc::out_of_range:
-	  return std::errc::invalid_argument;
-	case errc::invalid_argument:
-	  return std::errc::invalid_argument;
-	default:
-	  return std::error_condition(ev, *this);
-	}
-      }
-    };
-
-    const std::error_category& error_category();
+    const std::error_category& category();
 
     static inline std::error_condition make_error_condition(errc e) {
-      return std::error_condition(static_cast<int>(e), error_category());
+      return std::error_condition(static_cast<int>(e), category());
     }
 
     static inline std::error_code make_error_code(errc e) {
-      return std::error_code(static_cast<int>(e), error_category());
+      return std::error_code(static_cast<int>(e), category());
     }
   } // namespace store
 } // namespace crimson
@@ -172,13 +142,21 @@ namespace crimson {
       virtual future<> set_fsid(boost::uuids::uuid u) = 0;
       virtual future<boost::uuids::uuid> get_fsid() const = 0;
 
+      /// Look up a collection
+      ///
+      /// Return a handle to a collection, the collection must exist.
+      ///
+      /// \param[in] cid Collection ID
+      virtual future<CollectionRef> lookup_collection(string cid) const = 0;
+
       /// Make a collection
       ///
       /// Create a new collection. The collection must not exist prior
       /// to the call.
       ///
       /// \param[in] cid Collection ID
-      virtual future<CollectionRef>create_collection(string cid) = 0;
+      virtual future<CollectionRef> create_collection(string cid) = 0;
+
       /// Enumerate all collections in this store
       ///
       /// \note Ceph ObjectStore just returns them all at once. Do we

@@ -54,13 +54,13 @@ namespace crimson {
       friend void intrusive_ptr_release(OidCursor* a);
       virtual void get() = 0;
       virtual void put() = 0;
+      friend void intrusive_ptr_add_ref(OidCursor* o) {
+	o->get();
+      }
+      friend void intrusive_ptr_release(OidCursor* o) {
+	o->put();
+      }
     };
-    void intrusive_ptr_add_ref(OidCursor* o) {
-      o->get();
-    }
-    void intrusive_ptr_release(OidCursor* o) {
-      o->put();
-    }
     using OidCursorRef = foreign_ptr<boost::intrusive_ptr<OidCursor>>;
     /// A collection is a grouping of objects.
     ///

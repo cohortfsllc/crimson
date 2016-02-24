@@ -127,6 +127,8 @@ namespace crimson {
 
       public:
 
+	~Object() = default;
+
 	void ref() const override;
 	void unref() const override;
 

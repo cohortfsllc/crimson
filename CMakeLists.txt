@@ -7,6 +7,8 @@ set(CMAKE_CXX_STANDARD 14) # though Seastar adds -std=gnu++1y
 find_package(Seastar REQUIRED)
 find_package(CapnProto REQUIRED)
 
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src ${SEASTAR_INCLUDE_DIRS})
+
 # protocol definitions
 add_subdirectory(proto)
 

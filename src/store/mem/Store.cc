@@ -43,6 +43,31 @@ namespace crimson {
 	  delete this;
       }
 
+      future<CollectionRef> Store::lookup_collection(string cid) const {
+	if (!local())
+	  return smp::submit_to(
+	    cpu, [this, cid = std::move(cid)]() {
+	      return lookup_collection(cid);
+	    });
+
+	auto cid_cpu = cpu_for(cid);
+	auto find = [cid = std::move(cid), &m = *maps[cid_cpu]] {
+	  auto i = m.find(cid);
+	  if (i == m.end()) {
+	    return make_exception_future<CollectionRef>(
+	      std::system_error(errc::no_such_collection));
+	  }
+
+	  return make_ready_future<CollectionRef>(
+	    CollectionRef(i->second.get()));
+	};
+
+	if (cid_cpu == engine().cpu_id())
+	  return find();
+	else
+	  return smp::submit_to(cid_cpu, std::move(find));
+      }
+
       future<CollectionRef> Store::create_collection(string cid) {
 	if (!local())
 	  return smp::submit_to(
@@ -50,26 +75,24 @@ namespace crimson {
 	      return create_collection(cid);
 	    });
 
-	auto maker = [this, cid = std::move(cid)](
-	  std::map<string,MemColRef>& slice) {
-	  auto i = slice.find(cid);
-	  if (i != slice.end()) {
+	auto cid_cpu = cpu_for(cid);
+
+	auto maker = [sr = StoreRef(this), cid = std::move(cid),
+		      &m = *maps[cid_cpu]]() mutable {
+	  auto i = m.find(cid);
+	  if (i != m.end()) {
 	    return make_exception_future<CollectionRef>(
 	      std::system_error(errc::collection_exists));
 	  }
 
 	  return make_ready_future<CollectionRef>(
-	    CollectionRef(new Collection(StoreRef(this), cid, slice)));
+	    CollectionRef(new Collection(std::move(sr), cid, m)));
 	};
 
-	auto cid_cpu = cpu_for(cid);
 	if (cid_cpu == engine().cpu_id())
-	  return maker(*maps[cid_cpu]);
+	  return maker();
 	else
-	  return smp::submit_to(
-	    cid_cpu, [&slice = *maps[cid_cpu], &maker] {
-	      return maker(slice);
-	    });
+	  return smp::submit_to(cid_cpu, std::move(maker));
       }
 
     } // namespace mem
