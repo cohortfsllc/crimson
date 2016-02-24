@@ -49,6 +49,7 @@
 #include "cxx_function/cxx_function.hpp"
 
 #include "crimson.h"
+#include "common/held_span.h"
 
 namespace crimson {
 
@@ -66,7 +67,8 @@ namespace crimson {
       invalid_handle,
       invalid_cursor,
       out_of_range,
-      invalid_argument
+      invalid_argument,
+      collection_not_empty
     };
 
     class error_category : public std::error_category {
@@ -132,19 +134,24 @@ namespace crimson {
       }
     };
 
-    class Sequencer {
-    public:
-      virtual ~Sequencer() = default;
-      /// wait for any queued transactions on this sequencer to apply
-      virtual future<> flush() = 0;
-    };
-
     class Store {
     public:
       Store() = default;
       virtual ~Store() = default;
       Store(const Store& o) = delete;
       const Store& operator=(const Store& o) = delete;
+
+      friend inline void intrusive_ptr_add_ref(Store* s) {
+	s->ref();
+      }
+      friend inline void intrusive_ptr_release(Store* s) {
+	s->unref();
+      }
+
+      virtual void ref() = 0;
+      virtual void unref() = 0;
+
+      virtual unsigned cpu_for(const string& cid) const = 0;
 
       // mgmt
       virtual size_t get_max_object_name_length() const noexcept = 0;
@@ -177,7 +184,7 @@ namespace crimson {
       /// \note Ceph ObjectStore just returns them all at once. Do we
       /// think we'll need cursor-like logic the way we do for
       /// attribute and object enumeration?
-      virtual future<std::vector<string>> enumerate_collections() const = 0;
+      virtual future<held_span<string>> enumerate_collections() const = 0;
       /// Commit the entire Store
       ///
       /// All of it. No questions asked. This function acts as a
@@ -185,6 +192,8 @@ namespace crimson {
       /// outstanding ones are completed and stored stably.
       virtual future<> commit() = 0;
     };
+    using StoreRef = seastar::foreign_ptr<
+      boost::intrusive_ptr<Store>>;
   } // namespace store
 } // namespace crimson
 

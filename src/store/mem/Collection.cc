@@ -30,6 +30,8 @@
 /// \author Adam C. Emerson <aemerson@redhat.com>
 
 
+#include <functional>
+
 #include "Collection.h"
 
 
@@ -52,7 +54,7 @@ namespace crimson {
 	if (!local())
 	  return smp::submit_to(
 	    cpu, [this, oid = std::move(oid), excl]() {
-	      return create(oid, excl);
+	      return create(oid);
 	    });
 
 	auto maker = [this, oid = std::move(oid), excl](
@@ -77,6 +79,35 @@ namespace crimson {
 	  return smp::submit_to(
 	    oid_cpu, [&slice = *maps[oid_cpu], &maker] {
 	      return maker(slice); });
+      }
+
+      future<> Collection::remove() {
+	if (!local())
+	  return smp::submit_to(
+	    cpu, [this] {
+	      return remove();
+	    });
+
+	// It's kind of crap that foreign_ptr doesn't let you see what
+	// CPU it belongs to.
+	return seastar::map_reduce(
+	  boost::make_counting_iterator(0ul),
+	  boost::make_counting_iterator(maps.size()),
+	  [this](std::size_t i) {
+	    return smp::submit_to(
+	      i, [m = *maps[i]] {
+		return m.empty();
+	      });
+	  }, true, std::logical_and<bool>()).then(
+	    [this](bool empty) {
+	      if (empty) {
+		slice.erase(iter);
+		return make_ready_future<>();
+	      } else {
+		return make_exception_future<>(
+		  std::system_error(errc::collection_not_empty));
+	      }
+	    });
       }
     } // namespace mem
   } // namespace store

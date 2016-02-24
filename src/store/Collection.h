@@ -46,6 +46,8 @@ namespace crimson {
     class Object;
     using ObjectRef = foreign_ptr<boost::intrusive_ptr<Object>>;
 
+    using StoreRef = seastar::foreign_ptr<
+      boost::intrusive_ptr<Store>>;
 
     class OidCursor {
       friend void intrusive_ptr_add_ref(OidCursor* a);
@@ -67,7 +69,7 @@ namespace crimson {
 
     class Collection {
     protected:
-      Store& store;
+      StoreRef store;
       const string cid;
 
     public:
@@ -80,8 +82,8 @@ namespace crimson {
 	c->unref();
       }
 
-      explicit Collection(Store& _store, string _cid)
-	: store(_store), cid(std::move(_cid)) {}
+      explicit Collection(StoreRef _store, string _cid)
+	: store(std::move(_store)), cid(std::move(_cid)) {}
 
       virtual ~Collection() = default;
 
@@ -124,7 +126,7 @@ namespace crimson {
       /// \see move_coll_rename
       virtual future<> split_collection(
 	Collection& dest,
-	cxx_function::unique_function<bool(const string& oid)> pred) = 0;
+	function<bool(const string& oid) const> pred) = 0;
       /// Enumerate objects in a collection
       ///
       ///

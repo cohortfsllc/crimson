@@ -36,6 +36,8 @@
 #include <core/sstring.hh>
 #include <core/temporary_buffer.hh>
 
+#include "cxx_function/cxx_function.hpp"
+
 namespace crimson {
   using seastar::future;
   using seastar::promise;
@@ -86,6 +88,9 @@ namespace crimson {
   using std::experimental::nullopt;
   using std::pair;
   using std::tuple;
+
+  using cxx_function::function;
+  using cxx_function::unique_function;
 }
 
 #endif // CRIMSON_H

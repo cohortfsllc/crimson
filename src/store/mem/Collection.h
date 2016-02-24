@@ -42,6 +42,9 @@ namespace crimson {
   /// Storage interface
   namespace store {
     namespace mem {
+      class Collection;
+      using MemColRef = boost::intrusive_ptr<Collection>;
+
       /// A collection is a grouping of objects.
       ///
       /// Collections have names and can be enumerated in order.  Like
@@ -52,13 +55,22 @@ namespace crimson {
 	const unsigned cpu;
 	size_t ref_cnt = 0;
 
+	std::map<string, MemColRef>& slice;
+	const std::map<string, MemColRef>::iterator iter;
+
 	bool local() const {
 	  return engine().cpu_id() == cpu;
 	}
 
-	Collection(Store& _store, string _cid)
-	  : crimson::store::Collection(_store, std::move(_cid)),
-	    cpu(xxHash()(cid) % smp::count) {
+      public:
+	Collection(StoreRef _store, string _cid,
+		   std::map<string, MemColRef>& _slice)
+	  : crimson::store::Collection(std::move(_store), std::move(_cid)),
+	    cpu(xxHash()(cid) % smp::count), slice(_slice),
+	    iter((slice.emplace(
+		    std::piecewise_construct,
+		    std::forward_as_tuple(cid),
+		    std::forward_as_tuple(MemColRef(this)))).first) {
 	  auto maker = [] {
 	    return make_foreign(make_unique<std::map<string,MemObjRef>>());
 	  };
@@ -95,15 +107,21 @@ namespace crimson {
 	/// Ensure the existance of an object in a collection
 	future<ObjectRef> create(string oid, bool excl = false) override;
 	/// Remove this collection
-	virtual future<>remove() = 0;
+	future<> remove() override;
 	/// Split this collection
-	virtual future<> split_collection(
-	  Collection& dest,
-	  cxx_function::unique_function<bool(const string& oid)> pred) = 0;
+	future<> split_collection(
+	  store::Collection& dest,
+	  function< bool(const string& oid) const> pred) override {
+	  return make_exception_future<>(
+	    std::system_error(errc::operation_not_supported));
+	}
 	/// Enumerate objects in a collection
 	virtual future<std::vector<string>, OidCursorRef> enumerate_objects(
 	  optional<OidCursorRef> cursor,
-	  size_t to_return) const = 0;
+	  size_t to_return) const {
+	  return make_exception_future<std::vector<string>, OidCursorRef>(
+	    std::system_error(errc::operation_not_supported));
+	}
 	/// Get cursor for a given object
 	///
 	/// Not supported on MemStore (at least at the moment)

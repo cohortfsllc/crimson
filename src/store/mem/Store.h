@@ -41,8 +41,9 @@
 
 #include "common/xxHash.h"
 
-#include "store/Collection.h"
 #include "store/Store.h"
+
+#include "Collection.h"
 
 
 namespace crimson {
@@ -53,13 +54,44 @@ namespace crimson {
       class Store : public crimson::store::Store {
       private:
 	boost::uuids::uuid id;
+	std::vector<foreign_ptr<unique_ptr<
+	  std::map<string, MemColRef>>>> maps;
+	static const unsigned cpu = 0;
+	size_t ref_cnt = 0;
+
+	bool local() const {
+	  return engine().cpu_id() == cpu;
+	}
+
       public:
-	Store() noexcept : id(boost::uuids::random_generator()()) {}
+	Store() noexcept : id(boost::uuids::random_generator()()) {
+	  Expects(engine().cpu_id() == cpu);
+
+	  auto maker = [] {
+	    return make_foreign(make_unique<std::map<string,MemColRef>>());
+	  };
+	  maps.reserve(smp::count);
+	  for (unsigned i = 0; i < smp::count; ++i) {
+	    if (i == engine().cpu_id()) {
+	      maps[i] = maker();
+	    } else {
+	      maps[i] = smp::submit_to(i, [&maker] { return maker(); }).get0();
+	    }
+	  }
+	}
+
 	virtual ~Store() = default;
 	Store(const Store& o) = delete;
 	const Store& operator=(const Store& o) = delete;
 	Store(Store&& o) = delete;
 	const Store& operator=(Store&& o) = delete;
+
+	unsigned cpu_for(const string& cid) const override {
+	  return xxHash()(cid) % smp::count;
+	}
+
+	void ref() override;
+	void unref() override;
 
 	// mgmt
 	size_t get_max_object_name_length() const noexcept override {
@@ -101,7 +133,7 @@ namespace crimson {
 	/// \note Ceph ObjectStore just returns them all at once. Do we
 	/// think we'll need cursor-like logic the way we do for
 	/// attribute and object enumeration?
-	future<std::vector<string>> enumerate_collections() const override;
+	future<held_span<string>> enumerate_collections() const override;
 	/// Commit the entire Store
 	///
 	/// All of it. No questions asked. This function acts as a

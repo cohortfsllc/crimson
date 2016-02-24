@@ -31,3 +31,47 @@
 
 
 #include "store/mem/Store.h"
+
+namespace crimson {
+  namespace store {
+    namespace mem {
+      void Store::ref() {
+	++ref_cnt;
+      }
+      void Store::unref() {
+	if (--ref_cnt == 0)
+	  delete this;
+      }
+
+      future<CollectionRef> Store::create_collection(string cid) {
+	if (!local())
+	  return smp::submit_to(
+	    cpu, [this, cid = std::move(cid)]() {
+	      return create_collection(cid);
+	    });
+
+	auto maker = [this, cid = std::move(cid)](
+	  std::map<string,MemColRef>& slice) {
+	  auto i = slice.find(cid);
+	  if (i != slice.end()) {
+	    return make_exception_future<CollectionRef>(
+	      std::system_error(errc::collection_exists));
+	  }
+
+	  return make_ready_future<CollectionRef>(
+	    CollectionRef(new Collection(StoreRef(this), cid, slice)));
+	};
+
+	auto cid_cpu = cpu_for(cid);
+	if (cid_cpu == engine().cpu_id())
+	  return maker(*maps[cid_cpu]);
+	else
+	  return smp::submit_to(
+	    cid_cpu, [&slice = *maps[cid_cpu], &maker] {
+	      return maker(slice);
+	    });
+      }
+
+    } // namespace mem
+  } // namespace store
+} // crimson
