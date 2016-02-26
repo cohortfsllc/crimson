@@ -106,8 +106,8 @@ namespace crimson {
 
     class Store {
     public:
-      Store() = default;
-      virtual ~Store() = default;
+      Store() {};
+      virtual ~Store() {}
       Store(const Store& o) = delete;
       const Store& operator=(const Store& o) = delete;
 

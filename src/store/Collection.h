@@ -85,7 +85,7 @@ namespace crimson {
       explicit Collection(StoreRef _store, string _cid)
 	: store(std::move(_store)), cid(std::move(_cid)) {}
 
-      virtual ~Collection() = default;
+      virtual ~Collection() {};
 
       Collection(const Collection&) = delete;
       Collection& operator =(const Collection&) = delete;

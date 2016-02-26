@@ -85,7 +85,7 @@ namespace crimson {
       explicit Object(CollectionRef _coll,
 		      string _oid)
 	: coll(std::move(_coll)), oid(std::move(_oid)) {}
-      virtual ~Object() = default;
+      virtual ~Object() {}
 
       const string& get_oid() const {
 	return oid;
