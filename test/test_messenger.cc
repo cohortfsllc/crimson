@@ -98,7 +98,7 @@ future<> test_direct_connection()
 
 future<> test_socket_connection()
 {
-  auto addr = make_ipv4_address({"127.0.0.1", 3678});
+  auto addr = seastar::make_ipv4_address({"127.0.0.1", 3678});
 
   // start a listener
   auto listener = make_shared<SocketListener>(addr);
@@ -118,7 +118,7 @@ future<> test_socket_connection()
 
 int main(int argc, char** argv)
 {
-  app_template app;
+  seastar::app_template app;
   return app.run(argc, argv, [] {
       return now().then(
           &test_direct_connection

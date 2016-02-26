@@ -237,7 +237,8 @@ namespace crimson {
       ///
       /// \note Not supported on stores without a well-defined
       /// enumeration order for attributes.
-      virtual future<AttrCursorRef> attr_cursor(attr_ns ns, string attr) const;
+      virtual future<AttrCursorRef> attr_cursor(attr_ns ns,
+						string attr) const = 0;
 
       /// Get the object "header"
       ///

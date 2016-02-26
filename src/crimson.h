@@ -75,6 +75,10 @@ namespace crimson {
       return {s->c_str(), s->size(), seastar::make_object_deleter(
 	  make_foreign(const_cast<lw_shared_ptr<string>&>(s))) };
     }
+
+    inline string to_sstring(const const_buffer& buf) {
+      return string(buf.get(), buf.size());
+    }
   }
 
   using seastar::now;
