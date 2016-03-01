@@ -66,7 +66,7 @@ namespace crimson {
 	Collection(StoreRef _store, string _cid,
 		   std::map<string, MemColRef>& _slice)
 	  : crimson::store::Collection(std::move(_store), std::move(_cid)),
-	    cpu(xxHash()(cid) % smp::count), slice(_slice),
+	    maps(smp::count), cpu(xxHash()(cid) % smp::count), slice(_slice),
 	    iter((slice.emplace(
 		    std::piecewise_construct,
 		    std::forward_as_tuple(cid),
@@ -74,7 +74,6 @@ namespace crimson {
 	  auto maker = [] {
 	    return make_foreign(make_unique<std::map<string,MemObjRef>>());
 	  };
-	  maps.reserve(smp::count);
 	  for (unsigned i = 0; i < smp::count; ++i) {
 	    if (i == engine().cpu_id()) {
 	      maps[i] = maker();

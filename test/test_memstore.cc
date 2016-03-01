@@ -20,9 +20,41 @@
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 // 02110-1301 USA
 
+#include <core/app-template.hh>
+#include <core/reactor.hh>
+
+#include "crimson.h"
 #include "store/mem/Store.h"
 #include "store/mem/Collection.h"
 #include "store/mem/Object.h"
 
-int main(void) {
+using namespace crimson;
+
+namespace {
+  future<> test_make_memstore() {
+    return store::mem::Store::make().then(
+      [](shared_ptr<store::mem::Store> s) {
+	return make_ready_future<>();
+      });
+  }
+}
+
+int main(int argc, char** argv) {
+  seastar::app_template app;
+  try {
+    app.run(argc, argv, [] {
+	return now().then(
+	  &test_make_memstore)
+	  .then([] {
+	      std::cout << "All tests succeeded" << std::endl; })
+	  .handle_exception([] (auto eptr) {
+	      std::cout << "Test failure" << std::endl;
+	      return make_exception_future<>(eptr);
+	    });
+      });
+  } catch (const std::exception& e) {
+    std::cerr << "Tests failed: " << e.what() << std::endl;
+    return 1;
+  }
+  return 0;
 }

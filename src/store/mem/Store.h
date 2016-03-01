@@ -56,7 +56,7 @@ namespace crimson {
 	boost::uuids::uuid id;
 	std::vector<foreign_ptr<unique_ptr<
 	  std::map<string, MemColRef>>>> maps;
-	static const unsigned cpu = 0;
+	const unsigned cpu = engine().cpu_id();
 	size_t ref_cnt = 0;
 
 	bool local() const {
@@ -64,20 +64,38 @@ namespace crimson {
 	}
 
       public:
-	Store() noexcept : id(boost::uuids::random_generator()()) {
-	  Expects(engine().cpu_id() == cpu);
 
-	  auto maker = [] {
-	    return make_foreign(make_unique<std::map<string,MemColRef>>());
-	  };
-	  maps.reserve(smp::count);
-	  for (unsigned i = 0; i < smp::count; ++i) {
-	    if (i == engine().cpu_id()) {
-	      maps[i] = maker();
-	    } else {
-	      maps[i] = smp::submit_to(i, [&maker] { return maker(); }).get0();
-	    }
-	  }
+	// Do not call this constructor. It is only public so we can
+	// call make_shared.
+	Store() noexcept
+	  : id(boost::uuids::random_generator()()),
+	    maps(smp::count) { }
+
+	static future<shared_ptr<Store>> make() {
+	  using mt = decltype(Store::maps)::value_type;
+	  return seastar::do_with(
+	    make_shared<Store>(),
+	    [](shared_ptr<Store> s) {
+	      return seastar::parallel_for_each(
+		boost::counting_iterator<unsigned>(0),
+		boost::counting_iterator<unsigned>(smp::count),
+		[&s](unsigned i) {
+		  return smp::submit_to(
+		    i, [] {
+		      return make_ready_future<mt>(
+			make_foreign(
+			  make_unique<std::map<string, MemColRef>>()));
+		    })
+		    .then([&s, i](mt map) {
+			s->maps[i] = std::move(map);
+			return make_ready_future<>();
+		      });
+		    })
+		.then([&s] {
+		    return make_ready_future<shared_ptr<Store>>(
+		      std::move(s));
+		  });
+		});
 	}
 
 	virtual ~Store() = default;
