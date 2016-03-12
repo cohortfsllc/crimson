@@ -36,6 +36,7 @@
 
 #include <boost/uuid/uuid.hpp>
 #include <boost/uuid/random_generator.hpp>
+#include <boost/uuid/uuid_io.hpp>
 
 #include <core/slab.hh>
 
@@ -65,33 +66,54 @@ namespace crimson {
 
       public:
 
+	friend std::ostream& operator <<(std::ostream& m, const Store& s) {
+	  return m << "MemStore(id: " << s.id << " ref_cnt: " << s.ref_cnt
+		   << " cpu: " << s.cpu << " maps.size: "
+		   << s.maps.size() << ")" << std::endl;
+	}
+
 	// Do not call this constructor. It is only public so we can
 	// call make_shared.
 	Store() noexcept
 	  : id(boost::uuids::random_generator()()),
-	    maps(smp::count) { }
+	    maps(smp::count) {
+	    std::cout << "Hi, I'm the mestore constructor" << std::endl;
+	  }
 
 	static future<shared_ptr<Store>> make() {
+	  std::cout << "Hi, I'm the mestore factory" << std::endl;
 	  using mt = decltype(Store::maps)::value_type;
 	  return seastar::do_with(
 	    make_shared<Store>(),
 	    [](shared_ptr<Store> s) {
+	      std::cout << "I'm the closure immediately called by do_with"
+			<< std::endl;
+	      std::cout << "I have " << *s << std::endl;
 	      return seastar::parallel_for_each(
 		boost::counting_iterator<unsigned>(0),
 		boost::counting_iterator<unsigned>(smp::count),
-		[&s](unsigned i) {
+		[s](unsigned i) {
+		  std::cout << "I'm submitting a job to processor " << i
+			    << std::endl;
+		  std::cout << "I have " << *s << std::endl;
 		  return smp::submit_to(
 		    i, [] {
+		      std::cout << "I'm allocating a map on processor " <<
+			engine().cpu_id() << std::endl;
 		      return make_ready_future<mt>(
 			make_foreign(
 			  make_unique<std::map<string, MemColRef>>()));
 		    })
-		    .then([&s, i](mt map) {
+		    .then([s, i](mt map) {
+			std::cout << "I'm storing a map in index " << i
+				  << " in the map on store " << *s
+				  << std::endl;
 			s->maps[i] = std::move(map);
 			return make_ready_future<>();
 		      });
 		    })
-		.then([&s] {
+		.then([s] {
+		    std::cout << "I'm returning a shared pointer" << std::endl;
 		    return make_ready_future<shared_ptr<Store>>(
 		      std::move(s));
 		  });

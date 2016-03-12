@@ -32,8 +32,10 @@ using namespace crimson;
 
 namespace {
   future<> test_make_memstore() {
+    std::cout << "About to create memstore" << std::endl;
     return store::mem::Store::make().then(
       [](shared_ptr<store::mem::Store> s) {
+	std::cout << "Created the memstore" << std::endl;
 	return make_ready_future<>();
       });
   }
