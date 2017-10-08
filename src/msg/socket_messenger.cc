@@ -23,7 +23,7 @@
 #include "socket_messenger.h"
 #include <capnp/message.h>
 #include <kj/debug.h>
-#include <algorithm>
+#include <numeric>
 #include <vector>
 
 using namespace crimson;
